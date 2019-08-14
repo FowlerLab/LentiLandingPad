@@ -1,0 +1,1181 @@
+---
+title: "Lenti-landing pad (LLP) Manuscript Analysis Script"
+author: "Kenneth Anzai Matreyek"
+date: "8/12/2019"
+output: html_document
+---
+
+# Introduction
+#### This R markdown file is more exhaustive than the one included with the manuscript, which only covers analysis of the high throughput sequencing portion. This script takes ALL of the summary statistics and reproduces ALL of the plots in the manuscript. This necessitates downloading the "Data" folder (containing 54 individual files), un-gzipping the "plasmid" tsv files (these were too large to upload to GitHub ouright), and having that Data folder be in the same directory as this R Markdown script. Furthermore, make a "Plots" folder / directory, since I've also built this script to spit out the graphics I used to build the figures. -KAM
+
+# Initial setup of the analysis script, starting with a blank slate
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls())
+```
+
+#### Load the relevant packages, and set the theme and seed
+```{r Load packages and set up the theme, warning = F, results = "hide"}
+if(!require(tidyverse)){install.packages("tidyverse")}
+library(tidyverse)
+if(!require(viridis)){install.packages("viridis")}
+library(viridis)
+if(!require(matrixStats)){install.packages("matrixStats")}
+library(matrixStats)
+if(!require(reshape)){install.packages("reshape")}
+library(reshape)
+if(!require(ggrepel)){install.packages("ggrepel")}
+library(ggrepel)
+if(!require(MASS)){install.packages("MASS")}
+library(MASS)
+if(!require(GGally)){install.packages("GGally")}
+library(GGally)
+theme_replace(panel.background = element_blank(), panel.border = element_blank(), panel.grid.major = element_line("grey95"))
+set.seed(1234)
+```
+
+# Fig 1: Basic landing pad improvements
+```{r BFP positivity, fig.height = 2, fig.width = 3, warning = F}
+llp_versions_bfp_percentage <- read.csv(file = "Data/293T_LLP_bfp_percentage.csv", header = TRUE, stringsAsFactors = FALSE) 
+llp_versions_bfp_percentage$name <- paste(llp_versions_bfp_percentage$type,llp_versions_bfp_percentage$clone, sep = "_")
+llp_versions_bfp_percentage$type <- as.factor(llp_versions_bfp_percentage$type)
+llp_versions_bfp_percentage$mean <- (llp_versions_bfp_percentage$bfp_pos2 + llp_versions_bfp_percentage$bfp_pos3)/2
+
+llp_versions_bfp_percentage_plot <- ggplot() + theme(axis.text.x = element_text(angle = 0, hjust = 0.5, vjust = 0.5), legend.position = "none") + 
+  xlab(NULL) + ylab(NULL) + scale_fill_manual(values = viridis(3)) + 
+  geom_boxplot(data = llp_versions_bfp_percentage, aes(x = type, y = mean, fill = type), position = "dodge", alpha = 0.5, outlier.size = -1) + 
+  geom_point(data = llp_versions_bfp_percentage, aes(x = type, y = mean, fill = type), shape = 21, position = position_jitterdodge(jitter.width = 0.1), alpha = 0.5)
+llp_versions_bfp_percentage_plot
+ggsave(file = "Plots/Fig_1c_LLP_versions_BFP_percentage.pdf", llp_versions_bfp_percentage_plot, height = 1, width = 1.25)
+```
+
+#### Figure 1d: LLP versions recombination rate comparisons
+```{r Import LLPpanel, fig.height = 2, fig.width = 3.2, warning = F}
+llp_version_comparison_data <- read.csv(file = "Data/293T_LLP_version_comparison.csv", header = TRUE, stringsAsFactors = FALSE)
+llp_version_comparison_data <- subset(llp_version_comparison_data, replicate != 0)
+
+llp_version_comparison_data$recombined <- llp_version_comparison_data$rpos + llp_version_comparison_data$gpos
+llp_version_comparison_data$count <- 1
+llp_version_comparison_data$condition <- factor(llp_version_comparison_data$condition)
+
+llp_panel2_by_line <- llp_version_comparison_data %>% group_by(line, condition) %>% 
+  summarize(mean_recombined = mean(recombined), sd_recombined = sd(recombined), sum_count = sum(count))
+
+Recombination_rate_plot <- ggplot() + theme(axis.text.x = element_text(angle = 0, hjust = 0.5, vjust = 0.5), legend.position = "none") + 
+  xlab(NULL) + ylab(NULL) + 
+  scale_fill_manual(values = viridis(3)) + 
+  geom_boxplot(data = llp_version_comparison_data, aes(x = condition, y = recombined, fill = line), position = "dodge", alpha = 0.5) +
+  geom_point(data = llp_version_comparison_data, aes(x = condition, y = recombined, fill = line), shape = 21, position = position_jitterdodge(jitter.width = 0.1), alpha = 0.5)
+Recombination_rate_plot
+ggsave(file = "Plots/Fig_1d_Recombination_rate_plot.pdf", Recombination_rate_plot, height = 1, width = 1.6)
+```
+
+#### Figure 1e: Modes of fluorescence in LLP versions
+```{r Grab the modes data, fig.height = 2.4, fig.width = 3.6, warning = F}
+modes_data <- read.csv(file = "Data/293T_LLP_versions_modes.csv", header = TRUE, stringsAsFactors = FALSE)
+
+Modes_plot <- ggplot() + xlab(NULL) + ylab(NULL) + scale_y_log10() + scale_fill_manual(values = viridis(3)) + 
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5, vjust = 0.5), legend.position = "none") +
+  geom_hline(yintercept = 10^2, linetype = 2) +
+  geom_boxplot(data = modes_data, aes(x = "BFP", y = b_mode, fill = type), position = "dodge", alpha = 0.5, outlier.size = -1) +
+  geom_point(data = modes_data, aes(x = "BFP", y = b_mode, fill = type), shape = 21, position = position_jitterdodge(jitter.width = 0.1), alpha = 0.5) +
+  geom_boxplot(data = modes_data, aes(x = "EGFP", y = g_mode, fill = type), position = "dodge", alpha = 0.5, outlier.size = -1) +
+  geom_point(data = modes_data, aes(x = "EGFP", y = g_mode, fill = type), shape = 21, position = position_jitterdodge(jitter.width = 0.1), alpha = 0.5)
+Modes_plot
+
+ggsave(file = "Plots/Fig_1e_Modes_plot.pdf", Modes_plot, height = 1.2, width = 1.8)
+```
+
+### Additonal plots characterizing A549 cells
+```{r Plot the A549 data, warning = F}
+a549_timepoint <- read.csv(file = "Data/A549c5_timepoint.csv", header = TRUE, stringsAsFactors = FALSE)
+
+A549c5_time_plot <- ggplot() + xlab("Time since sort") + ylab("% blue cells") +
+  geom_hline(yintercept = 0, linetype = 1) +
+  geom_hline(yintercept = a549_timepoint[a549_timepoint$time == 0,"percent_blue"], linetype = 2) +
+  geom_line(data = a549_timepoint, aes(x = time, y = percent_blue), alpha = 0.4, color = "red") +
+  geom_point(data = a549_timepoint, aes(x = time, y = percent_blue))
+ggsave(file = "Plots/Supplementary_Fig_2b_A549c5_time_plot.pdf", A549c5_time_plot, height = 1.75, width = 1.25)
+A549c5_time_plot
+
+a549_blast <- read.csv(file = "Data/A549c5_Blast.csv", header = TRUE, stringsAsFactors = FALSE)
+A549c5_blast_plot <- ggplot() + xlab("Blasticidin concentration") + ylab("% blue cells") + scale_x_log10() +
+  geom_hline(yintercept = 0, linetype = 1) +
+  geom_hline(yintercept = a549_blast[a549_blast$concentration == 0,"percent_blue"], linetype = 2) +
+  geom_line(data = subset(a549_blast, concentration != 0), aes(x = concentration, y = percent_blue), alpha = 0.4, color = "red") +
+  geom_point(data = a549_blast, aes(x = concentration, y = percent_blue))
+ggsave(file = "Plots/Supplementary_Fig_2b_A549c5_blast_plot.pdf", A549c5_blast_plot, height = 1.75, width = 1.25)
+A549c5_blast_plot
+
+
+a549_nab <- read.csv(file = "Data/A549c5_NaB.csv", header = TRUE, stringsAsFactors = FALSE)
+a549_nab <- a549_nab %>% as_tibble() %>% mutate(percent_blue = (rep1 + rep2)/2)
+
+A549c5_nab_plot <- ggplot() + xlab("Sodium butyrate concentration") + ylab("% blue cells") + scale_x_log10() + scale_y_continuous(breaks = seq(0,16,2)) +
+  geom_hline(yintercept = 0, linetype = 1) +
+  geom_hline(yintercept = subset(a549_nab, concentration == 0)$percent_blue, linetype = 2) +
+  geom_line(data = subset(a549_nab, concentration != 0), aes(x = concentration, y = percent_blue), alpha = 0.4, color = "red") + 
+  geom_point(data = a549_nab, aes(x = concentration, y = percent_blue), alpha = 1, color = "black")
+ggsave(file = "Plots/Supplementary_Fig_2b_A549c5_nab_plot.pdf", A549c5_nab_plot, height = 1.75, width = 1.25)
+A549c5_nab_plot
+```
+
+#### Supplementary Figure 1d (left): plotting recombination rates and bfp decay curves for original LLP
+```{r LLP BFP decay modeling, warning = F}
+llp_bfp_data <- read.csv(file = "Data/293T_LLP_clones.csv", header = TRUE, stringsAsFactors = FALSE)
+llp_bfp_data$clone <- as.factor(llp_bfp_data$clone)
+
+## Using the published half-life of the GFP, simulate BFP decay with the starting MFI observed with LLP 293T clones
+decay_halflife = 26
+llp_starting_mfi = 40000  # This was the observed MFI for BFP in most clones of the lenti-landing pad in 293T cells
+llp_timeframe_simulation <- data.frame(time_hours = seq(1,24*10))
+llp_timeframe_simulation$time_days <- llp_timeframe_simulation$time_hours/24
+llp_timeframe_simulation$halflives <- llp_timeframe_simulation$time_hours / decay_halflife
+llp_timeframe_simulation$fraction_remain <- (1/2)^llp_timeframe_simulation$halflives
+llp_timeframe_simulation$current_mfi <- llp_starting_mfi * llp_timeframe_simulation$fraction_remain
+
+## Summary
+llp_bfp_summary_frame <- data.frame("clone" = seq(1,12,1))
+llp_bfp_summary_frame$slope <- 0
+llp_bfp_summary_frame$intercept <- 0
+
+for(x in 1:nrow(llp_bfp_summary_frame)){
+  temp_set <- subset(llp_bfp_data, clone == x & timepoint != 14)
+  temp_lm <- lm(log10(temp_set$median_mfi) ~ temp_set$timepoint)
+  llp_bfp_summary_frame$slope[x] <- temp_lm$coefficients[2]
+  llp_bfp_summary_frame$intercept[x] <- temp_lm$coefficients[1]
+}
+llp_bfp_summary_frame <- subset(llp_bfp_summary_frame, clone != 8)
+
+LLP_decay_plot <- ggplot() +  theme(legend.position = "none") + xlab("Day after Dox removal") + ylab("Median MFI") + 
+  scale_y_log10(limits = c(10,100000), expand = c(0,0.2)) + 
+  scale_color_manual(values = viridis(12)) + scale_x_continuous(limits = c(0,14), expand = c(0,0.2)) +
+  geom_abline(slope = mean(llp_bfp_summary_frame$slope), intercept = mean(llp_bfp_summary_frame$intercept), size = 6, linetype = 1, alpha = 0.15) +
+  geom_line(data = subset(llp_bfp_data, clone == 8), aes(x = timepoint, y = median_mfi), color = "black", size = 1, alpha = 0.4) + 
+  geom_point(data = subset(llp_bfp_data, clone == 8), aes(x = timepoint, y = median_mfi), color = "black", size = 1, alpha = 0.4) + 
+  geom_line(data = subset(llp_bfp_data, clone != 8), aes(x = timepoint, y = median_mfi, color = clone), size = 1, alpha = 0.4) + 
+  geom_point(data = subset(llp_bfp_data, clone != 8), aes(x = timepoint, y = median_mfi, color = clone), size = 1, alpha = 0.4)
+LLP_decay_plot
+ggsave(file = "Plots/Supplementary_Fig_2d_LLP_decay_plot.pdf", LLP_decay_plot, height = 1.6, width = 2)
+```
+
+#### Supplementary Figure 1d (right): plotting recombination rates and bfp decay curves for original LLP-int
+```{r Reporter Modeling, warning = F}
+llp_int_bfp_data <- read.csv(file = "Data/293T_LLPint_clones.csv", header = TRUE, stringsAsFactors = FALSE)
+llp_int_bfp_data <- subset(llp_int_bfp_data, clone != 0)
+llp_int_bfp_data$clone <- as.factor(llp_int_bfp_data$clone)
+
+## Simulate BFP decay with the starting MFI observed with LLP-int 293T clones
+decay_halflife = 26
+llp_int_starting_mfi = 3000
+llp_int_decay_simulation <- data.frame(time_hours = seq(1,24*6))
+llp_int_decay_simulation$time_days <- llp_int_decay_simulation$time_hours/24
+llp_int_decay_simulation$halflives <- llp_int_decay_simulation$time_hours / decay_halflife
+llp_int_decay_simulation$fraction_remain <- (1/2)^llp_int_decay_simulation$halflives
+llp_int_decay_simulation$current_mfi <- llp_int_starting_mfi * llp_int_decay_simulation$fraction_remain
+
+## Summary frame 2
+llp_int_summary_frame <- data.frame("clone" = seq(22,24,1))
+llp_int_summary_frame$slope <- 0
+llp_int_summary_frame$intercept <- 0
+
+for(x in 1:nrow(llp_int_summary_frame)){
+  temp_set <- subset(llp_int_bfp_data, clone == llp_int_summary_frame$clone[x] & date != 11)
+  temp_lm <- lm(log10(temp_set$median_mfi) ~ temp_set$date)
+  llp_int_summary_frame$slope[x] <- temp_lm$coefficients[2]
+  llp_int_summary_frame$intercept[x] <- temp_lm$coefficients[1]
+}
+
+LLPint_decay_plot <- ggplot() + theme(legend.position = "none") +
+  xlab("Day after Dox removal") + ylab("Median MFI") + scale_y_log10(limits = c(10,100000), expand = c(0,0.2)) + 
+  scale_color_manual(values = viridis(12)) + scale_x_continuous(limits = c(0,11), expand = c(0,0.2)) +
+  geom_abline(slope = mean(llp_int_summary_frame$slope), intercept = mean(llp_int_summary_frame$intercept), size = 6, linetype = 1, alpha = 0.15) +
+  geom_line(data = subset(llp_int_bfp_data, clone == 8 & date != 14), aes(x = date, y = median_mfi), color = "black", size = 1, alpha = 0.4) + 
+  geom_point(data = subset(llp_int_bfp_data, clone == 8 & date != 14), aes(x = date, y = median_mfi), color = "black", size = 1, alpha = 0.4) + 
+  geom_line(data = subset(llp_int_bfp_data, clone != 1), aes(x = date, y = median_mfi, color = clone), size = 1, alpha = 0.4) + 
+  geom_point(data = subset(llp_int_bfp_data, clone != 1), aes(x = date, y = median_mfi, color = clone), size = 1, alpha = 0.4) +
+  geom_line(data = subset(llp_bfp_data, clone == 8 & timepoint != 14), aes(x = timepoint, y = median_mfi), color = "black", size = 1, alpha = 0.4) + 
+  geom_point(data = subset(llp_bfp_data, clone == 8 & timepoint != 14), aes(x = timepoint, y = median_mfi), color = "black", size = 1, alpha = 0.4)
+LLPint_decay_plot
+ggsave(file = "Plots/Supplementary_Fig_2d_LLPint_decay_plot.pdf", LLPint_decay_plot, height = 1.6, width = 2)
+```
+
+
+# Figure2: Positive and Negative selection
+```{r 2A antibiotic selection data, warning = F}
+cap_dep_pos_selection_rep1 <- read.csv(file = "Data/Cap_dep_pos_selection_rep1.csv", header = TRUE, stringsAsFactors = FALSE)
+cap_dep_pos_selection_rep2 <- read.csv(file = "Data/Cap_dep_pos_selection_rep2.csv", header = TRUE, stringsAsFactors = FALSE)
+cap_dep_pos_selection_rep3 <- read.csv(file = "Data/Cap_dep_pos_selection_rep3.csv", header = TRUE, stringsAsFactors = FALSE)
+
+clone4_hygro <- merge(cap_dep_pos_selection_rep1[,c("conc","clone4_hygro")], cap_dep_pos_selection_rep2[,c("conc","clone4_hygro")], by = "conc")
+clone4_hygro <- merge(clone4_hygro, cap_dep_pos_selection_rep3[,c("conc","clone4_hygro")], by = "conc")
+clone4_hygro$mean <- rowMeans(clone4_hygro[,c("clone4_hygro.x","clone4_hygro.y","clone4_hygro")], na.rm = TRUE)
+clone4_hygro$sd <- rowSds(as.matrix(clone4_hygro[,c("clone4_hygro.x","clone4_hygro.y","clone4_hygro")]), na.rm = TRUE)
+
+clone4_puro <- merge(cap_dep_pos_selection_rep1[,c("conc","clone4_puro")], cap_dep_pos_selection_rep2[,c("conc","clone4_puro")], by = "conc")
+clone4_puro <- merge(clone4_puro, cap_dep_pos_selection_rep3[,c("conc","clone4_puro")], by = "conc")
+clone4_puro$mean <- rowMeans(clone4_puro[,c("clone4_puro.x","clone4_puro.y","clone4_puro")], na.rm = TRUE)
+clone4_puro$sd <- rowSds(as.matrix(clone4_puro[,c("clone4_puro.x","clone4_puro.y","clone4_puro")]), na.rm = TRUE)
+
+clone4_blast <- merge(cap_dep_pos_selection_rep1[,c("conc","clone4_blast")], cap_dep_pos_selection_rep2[,c("conc","clone4_blast")], by = "conc")
+clone4_blast <- merge(clone4_blast, cap_dep_pos_selection_rep3[,c("conc","clone4_blast")], by = "conc")
+clone4_blast$mean <- rowMeans(clone4_blast[,c("clone4_blast.x","clone4_blast.y","clone4_blast")], na.rm = TRUE)
+clone4_blast$sd <- rowSds(as.matrix(clone4_blast[,c("clone4_blast.x","clone4_blast.y","clone4_blast")]), na.rm = TRUE)
+
+clone6_hygro <- merge(cap_dep_pos_selection_rep1[,c("conc","clone6_hygro")], cap_dep_pos_selection_rep2[,c("conc","clone6_hygro")], by = "conc")
+clone6_hygro <- merge(clone6_hygro, cap_dep_pos_selection_rep3[,c("conc","clone6_hygro")], by = "conc")
+clone6_hygro$mean <- rowMeans(clone6_hygro[,c("clone6_hygro.x","clone6_hygro.y","clone6_hygro")], na.rm = TRUE)
+clone6_hygro$sd <- rowSds(as.matrix(clone6_hygro[,c("clone6_hygro.x","clone6_hygro.y","clone6_hygro")]), na.rm = TRUE)
+
+clone6_puro <- merge(cap_dep_pos_selection_rep1[,c("conc","clone6_puro")], cap_dep_pos_selection_rep2[,c("conc","clone6_puro")], by = "conc")
+clone6_puro <- merge(clone6_puro, cap_dep_pos_selection_rep3[,c("conc","clone6_puro")], by = "conc")
+clone6_puro$mean <- rowMeans(clone6_puro[,c("clone6_puro.x","clone6_puro.y","clone6_puro")], na.rm = TRUE)
+clone6_puro$sd <- rowSds(as.matrix(clone6_puro[,c("clone6_puro.x","clone6_puro.y","clone6_puro")]), na.rm = TRUE)
+
+clone6_blast <- merge(cap_dep_pos_selection_rep1[,c("conc","clone6_blast")], cap_dep_pos_selection_rep2[,c("conc","clone6_blast")], by = "conc")
+clone6_blast <- merge(clone6_blast, cap_dep_pos_selection_rep3[,c("conc","clone6_blast")], by = "conc")
+clone6_blast$mean <- rowMeans(clone6_blast[,c("clone6_blast.x","clone6_blast.y","clone6_blast")], na.rm = TRUE)
+clone6_blast$sd <- rowSds(as.matrix(clone6_blast[,c("clone6_blast.x","clone6_blast.y","clone6_blast")]), na.rm = TRUE)
+```
+
+#### Figure 2b (top)
+```{r Cap-dependent clone4 selection plot, warning = F}
+CapDep_Clone4_selection_plot <- ggplot() + theme(panel.background = element_blank(), panel.grid.major = element_line("grey95")) + 
+  scale_x_log10(breaks = c(0.1,1,10,100,1000,10000), limits = c(0.9e-2,1e4), expand = c(0,0)) + 
+  scale_y_continuous(limits = c(0,110), expand = c(0,0)) +
+  xlab("Antibiotic concentration (ug/ml)") + ylab("Percent recombined (BFP-/mCherry+) cells") + 
+  ggtitle("7-day Recombinant cell enrichments upon selection\nPuroR: Blue / BlastR: Green / HygroR: Red") +
+  geom_hline(yintercept = 0) + geom_hline(yintercept = 100) + 
+  geom_vline(xintercept = 0.02, linetype = 1) + geom_vline(xintercept = 1, linetype = 2) + geom_vline(xintercept = 100, linetype = 2) +
+  geom_errorbar(data = clone4_hygro, aes(x = conc, ymin = mean - sd, ymax = mean + sd), color = "red", alpha = 0.5) + geom_point(data = clone4_hygro, aes(x = conc, y = mean), color = "red") +
+  geom_point(data = clone4_hygro, aes(x = conc, y = mean), color = "red") + geom_line(data = clone4_hygro, aes(x = conc, y = mean), color = "red", linetype = 1) + 
+  geom_errorbar(data = clone4_puro, aes(x = conc, ymin = mean - sd, ymax = mean + sd), color = "blue", alpha = 0.5) + geom_point(data = clone4_puro, aes(x = conc, y = mean), color = "blue") +
+  geom_point(data = clone4_puro, aes(x = conc, y = mean), color = "blue") + geom_line(data = clone4_puro, aes(x = conc, y = mean), color = "blue", linetype = 1) +
+  geom_errorbar(data = clone4_blast, aes(x = conc, ymin = mean - sd, ymax = mean + sd), color = "darkgreen", alpha = 0.5) + geom_point(data = clone4_blast, aes(x = conc, y = mean), color = "darkgreen") +
+  geom_point(data = clone4_blast, aes(x = conc, y = mean), color = "darkgreen") + geom_line(data = clone4_blast, aes(x = conc, y = mean), color = "darkgreen", linetype = 1)
+CapDep_Clone4_selection_plot
+
+ggsave(file = "Plots/Fig_2b_CapDep_Clone4_Antibiotic_percent.pdf", CapDep_Clone4_selection_plot, height = 3, width = 5)
+```
+
+#### Figure 2b (bottom)
+```{r Cap-dependent clone6 selection plot, warning = F}
+CapDep_Clone6_selection_plot <- ggplot() + theme(panel.background = element_blank(), panel.grid.major = element_line("grey95")) + 
+  scale_x_log10(breaks = c(0.1,1,10,100,1000,10000), limits = c(0.9e-2,1e4), expand = c(0,0)) + 
+  scale_y_continuous(limits = c(0,110), expand = c(0,0)) +
+  xlab("Antibiotic concentration (ug/ml)") + ylab("Percent recombined (BFP-/mCherry+) cells") + 
+  ggtitle("7-day Recombinant cell enrichments upon selection\nPuroR: Blue / BlastR: Green / HygroR: Red") +
+  geom_hline(yintercept = 0) + geom_hline(yintercept = 100) + geom_vline(xintercept = 0.02, linetype = 1) + geom_vline(xintercept = 1, linetype = 2) + geom_vline(xintercept = 100, linetype = 2) +
+  geom_errorbar(data = clone6_hygro, aes(x = conc, ymin = mean - sd, ymax = mean + sd), color = "red", alpha = 0.5) + geom_point(data = clone6_hygro, aes(x = conc, y = mean), color = "red") +
+  geom_point(data = clone6_hygro, aes(x = conc, y = mean), color = "red") + geom_line(data = clone6_hygro, aes(x = conc, y = mean), color = "red", linetype = 1) + 
+  geom_errorbar(data = clone6_puro, aes(x = conc, ymin = mean - sd, ymax = mean + sd), color = "blue", alpha = 0.5) + geom_point(data = clone6_puro, aes(x = conc, y = mean), color = "blue") +
+  geom_point(data = clone6_puro, aes(x = conc, y = mean), color = "blue") + geom_line(data = clone6_puro, aes(x = conc, y = mean), color = "blue", linetype = 1) +
+  geom_errorbar(data = clone6_blast, aes(x = conc, ymin = mean - sd, ymax = mean + sd), color = "darkgreen", alpha = 0.5) + geom_point(data = clone6_blast, aes(x = conc, y = mean), color = "darkgreen") +
+  geom_point(data = clone6_blast, aes(x = conc, y = mean), color = "darkgreen") + geom_line(data = clone6_blast, aes(x = conc, y = mean), color = "darkgreen", linetype = 1)
+CapDep_Clone6_selection_plot
+
+ggsave(file = "Plots/Fig_2b_CapDep_Clone6_Antibiotic_percent.pdf", CapDep_Clone6_selection_plot, height = 3, width = 5)
+```
+
+#### Supplementary Figure 3
+```{r IRES antibiotic selection data, warning = F}
+IRES_pos_selection_rep1 <- read.csv(file = "Data/IRES_pos_selection_rep1.csv", header = TRUE, stringsAsFactors = FALSE)
+IRES_pos_selection_rep2 <- read.csv(file = "Data/IRES_pos_selection_rep2.csv", header = TRUE, stringsAsFactors = FALSE)
+IRES_pos_selection_rep3 <- read.csv(file = "Data/IRES_pos_selection_rep3.csv", header = TRUE, stringsAsFactors = FALSE)
+
+clone4_hygro <- merge(IRES_pos_selection_rep1[,c("conc","clone4_hygro")], IRES_pos_selection_rep2[,c("conc","clone4_hygro")], by = "conc")
+clone4_hygro <- merge(clone4_hygro, IRES_pos_selection_rep3[,c("conc","clone4_hygro")], by = "conc")
+clone4_hygro$mean <- rowMeans(clone4_hygro[,c("clone4_hygro.x","clone4_hygro.y","clone4_hygro")], na.rm = TRUE)
+clone4_hygro$sd <- rowSds(as.matrix(clone4_hygro[,c("clone4_hygro.x","clone4_hygro.y","clone4_hygro")]), na.rm = TRUE)
+
+clone4_puro <- merge(IRES_pos_selection_rep1[,c("conc","clone4_puro")], IRES_pos_selection_rep2[,c("conc","clone4_puro")], by = "conc")
+clone4_puro <- merge(clone4_puro, IRES_pos_selection_rep3[,c("conc","clone4_puro")], by = "conc")
+clone4_puro$mean <- rowMeans(clone4_puro[,c("clone4_puro.x","clone4_puro.y","clone4_puro")], na.rm = TRUE)
+clone4_puro$sd <- rowSds(as.matrix(clone4_puro[,c("clone4_puro.x","clone4_puro.y","clone4_puro")]), na.rm = TRUE)
+
+clone4_blast <- merge(IRES_pos_selection_rep1[,c("conc","clone4_blast")], IRES_pos_selection_rep2[,c("conc","clone4_blast")], by = "conc")
+clone4_blast <- merge(clone4_blast, IRES_pos_selection_rep3[,c("conc","clone4_blast")], by = "conc")
+clone4_blast$mean <- rowMeans(clone4_blast[,c("clone4_blast.x","clone4_blast.y","clone4_blast")], na.rm = TRUE)
+clone4_blast$sd <- rowSds(as.matrix(clone4_blast[,c("clone4_blast.x","clone4_blast.y","clone4_blast")]), na.rm = TRUE)
+
+clone6_hygro <- merge(IRES_pos_selection_rep1[,c("conc","clone6_hygro")], IRES_pos_selection_rep2[,c("conc","clone6_hygro")], by = "conc")
+clone6_hygro <- merge(clone6_hygro, IRES_pos_selection_rep3[,c("conc","clone6_hygro")], by = "conc")
+clone6_hygro$mean <- rowMeans(clone6_hygro[,c("clone6_hygro.x","clone6_hygro.y","clone6_hygro")], na.rm = TRUE)
+clone6_hygro$sd <- rowSds(as.matrix(clone6_hygro[,c("clone6_hygro.x","clone6_hygro.y","clone6_hygro")]), na.rm = TRUE)
+
+clone6_puro <- merge(IRES_pos_selection_rep1[,c("conc","clone6_puro")], IRES_pos_selection_rep2[,c("conc","clone6_puro")], by = "conc")
+clone6_puro <- merge(clone6_puro, IRES_pos_selection_rep3[,c("conc","clone6_puro")], by = "conc")
+clone6_puro$mean <- rowMeans(clone6_puro[,c("clone6_puro.x","clone6_puro.y","clone6_puro")], na.rm = TRUE)
+clone6_puro$sd <- rowSds(as.matrix(clone6_puro[,c("clone6_puro.x","clone6_puro.y","clone6_puro")]), na.rm = TRUE)
+
+clone6_blast <- merge(IRES_pos_selection_rep1[,c("conc","clone6_blast")], IRES_pos_selection_rep2[,c("conc","clone6_blast")], by = "conc")
+clone6_blast <- merge(clone6_blast, IRES_pos_selection_rep3[,c("conc","clone6_blast")], by = "conc")
+clone6_blast$mean <- rowMeans(clone6_blast[,c("clone6_blast.x","clone6_blast.y","clone6_blast")], na.rm = TRUE)
+clone6_blast$sd <- rowSds(as.matrix(clone6_blast[,c("clone6_blast.x","clone6_blast.y","clone6_blast")]), na.rm = TRUE)
+```
+
+#### Supplementary Figure 3a (top)
+```{r IRES clone4 selection plot, warning = F}
+IRES_selection_clone4_plot <- ggplot() + theme(panel.background = element_blank(), panel.grid.major = element_line("grey95")) + 
+  scale_x_log10(breaks = c(0.1,1,10,100,1000,10000), limits = c(0.9e-2,1e4), expand = c(0,0)) + 
+  scale_y_continuous(limits = c(0,110), expand = c(0,0)) +
+  xlab("Antibiotic concentration (ug/ml)") + ylab("Percent recombined (BFP-/mCherry+) cells") + 
+  ggtitle("7-day Recombinant cell enrichments upon selection\nPuroR: Blue / BlastR: Green / HygroR: Red") +
+  geom_hline(yintercept = 0) + geom_hline(yintercept = 100) + geom_vline(xintercept = 0.02, linetype = 1) + geom_vline(xintercept = 1, linetype = 2) + geom_vline(xintercept = 100, linetype = 2) +
+  geom_errorbar(data = clone4_hygro, aes(x = conc, ymin = mean - sd, ymax = mean + sd), color = "red", alpha = 0.5) + geom_point(data = clone4_hygro, aes(x = conc, y = mean), color = "red") +
+  geom_point(data = clone4_hygro, aes(x = conc, y = mean), color = "red") + geom_line(data = clone4_hygro, aes(x = conc, y = mean), color = "red", linetype = 1) + 
+  geom_errorbar(data = clone4_puro, aes(x = conc, ymin = mean - sd, ymax = mean + sd), color = "blue", alpha = 0.5) + geom_point(data = clone4_puro, aes(x = conc, y = mean), color = "blue") +
+  geom_point(data = clone4_puro, aes(x = conc, y = mean), color = "blue") + geom_line(data = clone4_puro, aes(x = conc, y = mean), color = "blue", linetype = 1) +
+  geom_errorbar(data = clone4_blast, aes(x = conc, ymin = mean - sd, ymax = mean + sd), color = "darkgreen", alpha = 0.5) + geom_point(data = clone4_blast, aes(x = conc, y = mean), color = "darkgreen") +
+  geom_point(data = clone4_blast, aes(x = conc, y = mean), color = "darkgreen") + geom_line(data = clone4_blast, aes(x = conc, y = mean), color = "darkgreen", linetype = 1)
+IRES_selection_clone4_plot
+
+ggsave(file = "Plots/Supplementary_Fig_3a_IRES_Clone4_antibiotic_percent.pdf", IRES_selection_clone4_plot, height = 3, width = 5)
+```
+
+#### Supplementary Figure 3a (bottom)
+```{r IRES clone6 selection plot, warning = F}
+IRES_selection_clone6_plot <- ggplot() + theme(panel.background = element_blank(), panel.grid.major = element_line("grey95")) + 
+  scale_x_log10(breaks = c(0.1,1,10,100,1000,10000), limits = c(0.9e-2,1e4), expand = c(0,0)) + 
+  scale_y_continuous(limits = c(0,110), expand = c(0,0)) +
+  xlab("Antibiotic concentration (ug/ml)") + ylab("Percent recombined (BFP-/mCherry+) cells") + 
+  ggtitle("7-day Recombinant cell enrichments upon selection\nPuroR: Blue / BlastR: Green / HygroR: Red") +
+  geom_hline(yintercept = 0) + geom_hline(yintercept = 100) + geom_vline(xintercept = 0.02, linetype = 1) + geom_vline(xintercept = 1, linetype = 2) + geom_vline(xintercept = 100, linetype = 2) +
+  geom_errorbar(data = clone6_hygro, aes(x = conc, ymin = mean - sd, ymax = mean + sd), color = "red", alpha = 0.5) + geom_point(data = clone6_hygro, aes(x = conc, y = mean), color = "red") +
+  geom_point(data = clone6_hygro, aes(x = conc, y = mean), color = "red") + geom_line(data = clone6_hygro, aes(x = conc, y = mean), color = "red", linetype = 1) +
+  geom_errorbar(data = clone6_puro, aes(x = conc, ymin = mean - sd, ymax = mean + sd), color = "blue", alpha = 0.5) + geom_point(data = clone6_puro, aes(x = conc, y = mean), color = "blue") +
+  geom_point(data = clone6_puro, aes(x = conc, y = mean), color = "blue") + geom_line(data = clone6_puro, aes(x = conc, y = mean), color = "blue", linetype = 1) +
+  geom_errorbar(data = clone6_blast, aes(x = conc, ymin = mean - sd, ymax = mean + sd), color = "darkgreen", alpha = 0.5) + geom_point(data = clone6_blast, aes(x = conc, y = mean), color = "darkgreen") +
+  geom_point(data = clone6_blast, aes(x = conc, y = mean), color = "darkgreen") + geom_line(data = clone6_blast, aes(x = conc, y = mean), color = "darkgreen", linetype = 1)
+IRES_selection_clone6_plot
+
+ggsave(file = "Plots/Supplementary_Fig_3a_IRES_Clone6_antibiotic_percent.pdf", IRES_selection_clone6_plot, height = 3, width = 5)
+```
+
+#### Fig 2e
+```{r iCasp9 dilution timing plot, warning = F}
+icasp9_replicates <- read.csv(file = "Data/iCasp9_replicate_selections.csv")
+icasp9_replicates_melt <- melt(icasp9_replicates, id = "replicate")
+
+icasp9_replicate_selections <- ggplot() + 
+  xlab(NULL) + ylab("Percent recombined cells in well") +
+  geom_hline(yintercept = 0) + geom_hline(yintercept = 100, linetype = 2) +
+  geom_boxplot(data = icasp9_replicates_melt, aes(x = variable, y = value), alpha = 0.2, width = 0.5, outlier.size = 0)+ 
+  geom_jitter(data = icasp9_replicates_melt, aes(x = variable, y = value), width = 0.1, alpha = 0.5)
+icasp9_replicate_selections
+ggsave(file = "Plots/Fig_2e_iCasp9_replicate_selections.pdf", icasp9_replicate_selections, height = 1, width = 2.5)
+```
+
+### Supplementary Fig 3c
+```{r iCasp9 dilution timing, warning = F}
+icasp9_dilution_data <- read.csv(file = "Data/293T_iCasp9_dilution.csv")
+icasp9_dilution_data$pct_surviving <- 100 - icasp9_dilution_data$pct_death
+
+icasp9_dilution_plot <- ggplot() + 
+  xlab("Hours after dox removal") + ylab("Percent maximal surviving cells") +
+  geom_hline(yintercept = 0) + geom_vline(xintercept = 0) +
+  geom_vline(xintercept = 48, linetype = 2, alpha = 0.4) + 
+  scale_x_continuous(breaks = c(0,10,20,30,40), expand = c(0,0.8)) +
+  scale_y_continuous(expand = c(0,max(icasp9_dilution_data$pct_surviving)/20)) +
+  geom_line(data = subset(icasp9_dilution_data, date == "190628"), aes(x = hours, y = pct_surviving), color = "red", alpha = 0.4) +
+  geom_line(data = subset(icasp9_dilution_data, date == "190712"), aes(x = hours, y = pct_surviving), color = "blue", alpha = 0.4) +
+  geom_point(data = icasp9_dilution_data, aes(x = hours, y = pct_surviving), alpha = 0.5)
+icasp9_dilution_plot
+
+ggsave(file = "Plots/Supplementary_Fig_3c_iCasp9_dilution_plot.pdf", icasp9_dilution_plot, height = 1.5, width = 2.5)
+```
+
+# Fig 3: Toxic genes and growth assays
+#### Supplementary Fig 3
+```{r p21 analysis, warning = F}
+p21_timepoints <- read.csv(file = "Data/p21_waf_expt1.csv", header = TRUE, stringsAsFactors = FALSE)
+
+p21_timepoints_combined <- p21_timepoints %>% group_by(type, timepoint) %>% summarize(frac_gfp_pos_mean = mean(frac_gfp_pos), frac_gfp_pos_sd = sd(frac_gfp_pos), frac_mcherry_pos_mean = mean(frac_mcherry_pos), frac_mcherry_pos_sd = sd(frac_mcherry_pos))
+
+## Simulate the an estimate of the two decay curves I observed
+p21_mixed_population_simulation <- data.frame(time_hours = seq(1,24*7))
+p21_mixed_population_simulation$time_days <- p21_mixed_population_simulation$time_hours/24
+
+decay_halflife_normal = 24 * 12 # 12 days
+starting_value_normal = 1
+p21_mixed_population_simulation$halflives1 <- p21_mixed_population_simulation$time_hours / decay_halflife_normal
+p21_mixed_population_simulation$fraction_remain1 <- (1/2)^p21_mixed_population_simulation$halflives1
+p21_mixed_population_simulation$current_percentage_normal <- starting_value_normal * p21_mixed_population_simulation$fraction_remain1
+
+decay_halflife_arrested = 30 # 30 hours
+starting_value_arrested = 1
+p21_mixed_population_simulation$halflives2 <- p21_mixed_population_simulation$time_hours / decay_halflife_arrested
+p21_mixed_population_simulation$fraction_remain2 <- (1/2)^p21_mixed_population_simulation$halflives2
+p21_mixed_population_simulation$current_percentage_accelerated <- starting_value_arrested * p21_mixed_population_simulation$fraction_remain2
+
+p21_mCherry <- ggplot() + theme(panel.background = element_blank(), panel.grid.major = element_line("grey95"), panel.border = element_rect(fill = NA)) + 
+  scale_y_log10(limits = c(0.01,1.1), expand = c(0,0.1)) +
+  geom_point(data = p21_mixed_population_simulation, aes(x = time_days, y = current_percentage_normal), color = "grey80", size = 0.5) + 
+  geom_point(data = p21_mixed_population_simulation, aes(x = time_days, y = current_percentage_accelerated), color = "grey50", size = 0.5) +
+  geom_errorbar(data = p21_timepoints_combined, aes(x = timepoint, ymin = frac_mcherry_pos_mean - frac_mcherry_pos_sd, ymax = frac_mcherry_pos_mean + frac_mcherry_pos_sd, color = type), width = 0.4) +
+  geom_line(data = p21_timepoints_combined, aes(x = timepoint, y = frac_mcherry_pos_mean, color = type), linetype = 2, size = 1) +
+  geom_point(data = p21_timepoints_combined, aes(x = timepoint, y = frac_mcherry_pos_mean, color = type), size = 3) + 
+  xlab(NULL) + ylab(NULL) + 
+  theme(legend.position = "none")
+p21_mCherry
+ggsave(file = "Plots/Supplementary_Fig_4b_p21_mCherry.pdf", p21_mCherry, height = 2, width = 1.5)
+
+
+p21_EGFP <- ggplot() + theme(panel.background = element_blank(), panel.grid.major = element_line("grey95"), panel.border = element_rect(fill = NA)) + 
+  scale_y_log10(limits = c(0.01,1.1), expand = c(0,0.1)) +
+  geom_point(data = p21_mixed_population_simulation, aes(x = time_days, y = current_percentage_normal), color = "grey80", size = 0.5) + 
+  geom_point(data = p21_mixed_population_simulation, aes(x = time_days, y = current_percentage_accelerated), color = "grey50", size = 0.5) +
+  geom_errorbar(data = p21_timepoints_combined, aes(x = timepoint,  
+                                                    ymin = frac_gfp_pos_mean - frac_gfp_pos_sd, ymax = frac_gfp_pos_mean + frac_gfp_pos_sd, color = type), width = 0.4) +
+  geom_line(data = p21_timepoints_combined, aes(x = timepoint, y = frac_gfp_pos_mean, color = type), linetype = 2, size = 1) +
+  geom_point(data = p21_timepoints_combined, aes(x = timepoint, y = frac_gfp_pos_mean, color = type), size = 3) + 
+  xlab(NULL) + ylab(NULL) + 
+  theme(legend.position = "none")
+p21_EGFP
+ggsave(file = "Plots/Supplementary_Fig_4b_p21_EGFP.pdf", p21_EGFP, height = 2, width = 1.5)
+```
+
+
+# Combinatorial Library Experiments
+#### Supplementary Fig 1 defining the plasmid library
+```{r Analyze plasmid, fig.height = 4, fig.width = 4, warning = F}
+index <- read.csv(file = "Data/TSPCR_indices.csv", header = TRUE, stringsAsFactors = FALSE)
+index <- subset(index, intended == "yes")
+index_list <- index$index
+index$index <- as.character(index$index)
+
+experiment_name <- "plasmid"
+plasmid_1a <- read.delim(file = "Data/plasmid_1a.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE); colnames(plasmid_1a) <- c("index","count_a")
+plasmid_1b <- read.delim(file = "Data/plasmid_1b.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE); colnames(plasmid_1b) <- c("index","count_b")
+plasmid_2a <- read.delim(file = "Data/plasmid_2a.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE); colnames(plasmid_2a) <- c("index","count_a")
+plasmid_2b <- read.delim(file = "Data/plasmid_2b.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE); colnames(plasmid_2b) <- c("index","count_b")
+
+plasmid_1 <- merge(plasmid_1a, plasmid_1b, by = "index")
+plasmid_1$count1 <- plasmid_1$count_a + plasmid_1$count_b
+plasmid_2 <- merge(plasmid_2a, plasmid_2b, by = "index")
+plasmid_2$count2 <- plasmid_2$count_a + plasmid_2$count_b
+
+plasmid <- merge(plasmid_1[,c("index","count1")], plasmid_2[,c("index","count2")], by = "index")
+plasmid[is.na(plasmid )] <- 0
+
+plasmid$count <- plasmid$count1 + plasmid$count2
+plasmid$index2 <- substr(plasmid$index,5,12)
+plasmid$index1 <- substr(plasmid$index,41,48)
+plasmid <- subset(plasmid, index1 %in% index_list & index2 %in% index_list)
+plasmid_1plus <- subset(plasmid, count1 > 1 & count2 > 1)
+plasmid_1plus$freq1 <- plasmid_1plus$count1 / sum(plasmid_1plus$count1, na.rm = TRUE)
+plasmid_1plus$freq2 <- plasmid_1plus$count2 / sum(plasmid_1plus$count2, na.rm = TRUE)
+
+Plasmid_frequency_techreps_plot <- ggplot() + scale_x_log10() + scale_y_log10() + xlab("Barcode frequency/nTechnical Replicate 1") + ylab("Barcode frequency/nTechnical Replicate 2") + theme(panel.border = element_blank()) +
+  geom_point(data = plasmid_1plus, aes(x = freq1, y = freq2), alpha = 0.005) +
+  annotate("text", x = min(plasmid_1plus$freq1)*1.1, y = max(plasmid_1plus$freq2)*0.9, hjust = 0,
+           label = paste("Pearson's r:",round(cor(plasmid_1plus$freq1, plasmid_1plus$freq2, method = "pearson"),2)))
+Plasmid_frequency_techreps_plot
+ggsave(file = "Plots/Supplementary_Fig1a_Plasmid_frequency_techreps_plot.png", Plasmid_frequency_techreps_plot, height = 3, width = 3)
+```
+
+#### Determine the TS-PCR plasmid barcode diversity and distribution
+This data is not shown in the manuscript, but still useful for general understanding of the library
+```{r Fit a log-normal distribution to the plasmid library, warning = F}
+plasmid_1plus$bc2 <- paste(substr(plasmid_1plus$index,1,4),substr(plasmid_1plus$index,13,16),sep="")
+plasmid_1plus$bc1 <- paste(substr(plasmid_1plus$index,37,40),substr(plasmid_1plus$index,49,52),sep="")
+plasmid_1plus$bc <- paste(plasmid_1plus$bc2,plasmid_1plus$bc1,sep="")
+plasmid_1plus$freq <- (plasmid_1plus$freq1 + plasmid_1plus$freq2) / 2
+plasmid_1plus <- plasmid_1plus[order(plasmid_1plus$freq, decreasing = TRUE),]
+
+## Fig a log-normal distribution to the library plot
+fit <- fitdistr(plasmid_1plus$freq, "log-normal")
+para <- fit$estimate
+
+lognormal_dist_fit_tspcr <- data.frame("prob" = rlnorm(1000000, meanlog = para[1], sdlog = para[2]))
+Library_distribution_fit_plot <- ggplot() + 
+  geom_density(data = lognormal_dist_fit_tspcr, aes(prob), fill = "red", color = "red", size = 0.8, alpha = 0.2) + 
+  geom_density(data = plasmid_1plus, aes(freq), fill = "black", size = 0.8, alpha = 0.4) + 
+  scale_x_log10(limits = c(1e-7, 1e-4), breaks = c(0.00001,0.0001,0.001)) + xlab("Frequency") + ylab("Density")
+Library_distribution_fit_plot
+ggsave(file = "Plots/Supplementary_Fig1_Library_distribution_fit_plot.pdf", Library_distribution_fit_plot, height = 3, width = 3)
+
+print(paste("Geometric coefficient of variation for the TSPCR library (barcodes):", round(exp(para[2]*log(10))-1,2)))
+print(paste("Size of TS-PCR library:", length(unique(plasmid_1plus$bc)), "unique barcodes"))
+```
+
+#### Showing various correlations of the gene combinations within the plasmid library
+```{r Additional assessment of the library, warning = F}
+plasmid_combinations <- plasmid_1plus %>% dplyr::group_by(index1, index2) %>% dplyr::summarize(freq = sum(freq))
+
+plasmid_combinations$orf1 <- NA
+plasmid_combinations$orf2 <- NA
+
+for(x in 1:nrow(plasmid_combinations)){
+  if(plasmid_combinations$index2[x] %in% index$index){plasmid_combinations$orf2[x] <- index[plasmid_combinations$index2[x] == index$index,"name"]}
+  if(plasmid_combinations$index1[x] %in% index$index){plasmid_combinations$orf1[x] <- index[plasmid_combinations$index1[x] == index$index,"name"]}
+}
+
+plasmid_combinations <- subset(plasmid_combinations, !is.na(orf1) & !is.na(orf2))
+paste("There were",nrow(plasmid_combinations),"combinations of genes observed in the plasmid library")
+
+
+## Number of times each orf was barcoded
+plasmid_1plus$bc <- 1
+
+plasmid_barcoded <- plasmid_1plus %>% dplyr::group_by(index1, index2) %>% dplyr::summarize(bc_number = sum(bc), freq = sum(freq), freq1 = sum(freq1), freq2 = sum(freq2))
+plasmid_barcoded$orf1 <- NA
+plasmid_barcoded$orf2 <- NA
+for(x in 1:nrow(plasmid_barcoded)){
+  if(plasmid_barcoded$index2[x] %in% index$index){plasmid_barcoded$orf2[x] <- index[plasmid_barcoded$index2[x] == index$index,"name"]}
+  if(plasmid_barcoded$index1[x] %in% index$index){plasmid_barcoded$orf1[x] <- index[plasmid_barcoded$index1[x] == index$index,"name"]}
+}
+plasmid_barcoded <- subset(plasmid_barcoded, !is.na(orf1) & !is.na(orf2))
+
+plasmid_frequency_techreps <- ggplot() + scale_x_log10() + scale_y_log10() + xlab("Frequency in technical replicate 2") + ylab("Frequency in technical replicate 1") +
+  geom_point(data = plasmid_barcoded, aes(x = freq1, y = freq2), alpha = 0.2) + 
+  annotate("text", x = min(plasmid_barcoded$freq1)*1.1, y = max(plasmid_barcoded$freq2)*0.9, hjust = 0,
+           label = paste("Pearson's r:",round(cor(plasmid_barcoded$freq1, plasmid_barcoded$freq2, method = "pearson"),2)))
+plasmid_frequency_techreps
+ggsave(file = "Plots/Supplementary_Fig1b_plasmid_frequency_techreps.pdf", plasmid_frequency_techreps, height = 2.5, width = 3)
+
+plasmid_barcode_frequency_plot <- ggplot() + scale_x_log10() + scale_y_log10() + xlab("Number of times each gene combination was barcoded") + ylab("Frequency in sequenced plasmid prep") +
+  geom_point(data = plasmid_barcoded, aes(x = bc_number, y = freq), alpha = 0.2) +
+  annotate("text", x = min(plasmid_barcoded$bc_number)*1.1, y = max(plasmid_barcoded$freq)*0.9, hjust = 0,
+           label = paste("Pearson's r:",round(cor(plasmid_barcoded$bc_number, plasmid_barcoded$freq, method = "pearson"),2)))
+plasmid_barcode_frequency_plot
+ggsave(file = "Plots/Supplementary_Fig1c_Plasmid_barcode_frequency_plot.pdf", plasmid_barcode_frequency_plot, height = 2.5, width = 3)
+```
+
+#### Heatmap show representation of each gene combination in the plasmid library
+```{r Actual plasmid analysis, warning = F}
+### Make a dummy table of all pairwise combos
+orf1 <- subset(index, position == "ORF-1" & intended == "yes")
+orf2 <- subset(index, position == "ORF-2" & intended == "yes")
+
+possible_plasmids <- data.frame("orf1" = rep("ORF1", nrow(orf1)*nrow(orf2)), "orf2" = rep("ORF2", nrow(orf1)*nrow(orf2)))
+possible_plasmids$orf1 <- as.character(possible_plasmids$orf1)
+possible_plasmids$orf2 <- as.character(possible_plasmids$orf2)
+
+counter <- 1
+for(x in 1:nrow(orf1)){
+  for(y in 1:nrow(orf2)){
+    possible_plasmids$orf1[counter] <- orf1$name[x]
+    possible_plasmids$orf2[counter] <- orf2$name[y]
+    counter <- counter + 1
+  }
+}
+
+plasmid_freq_complete <- merge(possible_plasmids,plasmid_combinations[,c("orf1","orf2","freq")], by = c("orf1","orf2"), all = TRUE)
+plasmid_freq_complete$log10_freq <- log10(plasmid_freq_complete$freq)
+
+Plasmid_freq_heatmap <- ggplot() + geom_tile(data= plasmid_freq_complete, aes(x = orf1, y = orf2, fill = log10_freq)) + theme(axis.text.x = element_text(angle = -90, hjust = 0, vjust = 0.5)) + scale_fill_gradient(low = "blue", high = "white") + xlab("Gene as ORF-1") + ylab("Gene as ORF-2")
+Plasmid_freq_heatmap
+ggsave(file = "Plots/Fig_4b_TSPCR_plasmid_heatmap.pdf", Plasmid_freq_heatmap, height = 3.2*0.95, width = 4.5*0.95)
+```
+
+```{r Look at timepoint zero for all replicate experiments, warning = F}
+e1t0_a <- read.delim(file = "Data/e1t0_a.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e1t0_b <- read.delim(file = "Data/e1t0_b.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e1t0 <- merge(e1t0_a, e1t0_b, by = "X", all = T); colnames(e1t0) <- c("X","a","b") # e1t0[is.na(e1t0)] <- 0; 
+e1t0$ab <- e1t0$a + e1t0$b; e1t0[,c("a","b","ab")] <- e1t0[,c("a","b","ab")] / colSums(e1t0[,c("a","b","ab")], na.rm = T)
+
+e2t0_a <- read.delim(file = "Data/e2t0_a.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e2t0_b <- read.delim(file = "Data/e2t0_b.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e2t0 <- merge(e2t0_a, e2t0_b, by = "X", all = T); colnames(e2t0) <- c("X","a","b") # e2t0[is.na(e2t0)] <- 0; 
+e2t0$ab <- e2t0$a + e2t0$b; e2t0[,c("a","b","ab")] <- e2t0[,c("a","b","ab")] / colSums(e2t0[,c("a","b","ab")], na.rm = T)
+
+e3t0_a <- read.delim(file = "Data/e3t0_a.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e3t0_b <- read.delim(file = "Data/e3t0_b.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e3t0 <- merge(e3t0_a, e3t0_b, by = "X", all = T); colnames(e3t0) <- c("X","a","b") # e3t0[is.na(e3t0)] <- 0; 
+e3t0$ab <- e3t0$a + e3t0$b; e3t0[,c("a","b","ab")] <- e3t0[,c("a","b","ab")] / colSums(e3t0[,c("a","b","ab")], na.rm = T)
+
+e4t0_a <- read.delim(file = "Data/e4t0_a.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e4t0_b <- read.delim(file = "Data/e4t0_b.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e4t0 <- merge(e4t0_a, e4t0_b, by = "X", all = T); colnames(e4t0) <- c("X","a","b") # e4t0[is.na(e4t0)] <- 0; 
+e4t0$ab <- e4t0$a + e4t0$b; e4t0[,c("a","b","ab")] <- e4t0[,c("a","b","ab")] / colSums(e4t0[,c("a","b","ab")], na.rm = T)
+
+e5t0_a <- read.delim(file = "Data/e5t0_a.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e5t0_b <- read.delim(file = "Data/e5t0_b.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e5t0 <- merge(e5t0_a, e5t0_b, by = "X", all = T); colnames(e5t0) <- c("X","a","b") # e5t0[is.na(e5t0)] <- 0; 
+e5t0$ab <- e5t0$a + e5t0$b; e5t0[,c("a","b","ab")] <- e5t0[,c("a","b","ab")] / colSums(e5t0[,c("a","b","ab")], na.rm = T)
+
+e6t0_a <- read.delim(file = "Data/e6t0_a.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e6t0_b <- read.delim(file = "Data/e6t0_b.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e6t0 <- merge(e6t0_a, e6t0_b, by = "X", all = T); colnames(e6t0) <- c("X","a","b") # e6t0[is.na(e6t0)] <- 0; 
+e6t0$ab <- e6t0$a + e6t0$b; e6t0[,c("a","b","ab")] <- e6t0[,c("a","b","ab")] / colSums(e6t0[,c("a","b","ab")], na.rm = T)
+
+e7t0_a <- read.delim(file = "Data/e7t0_a.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e7t0_b <- read.delim(file = "Data/e7t0_b.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e7t0 <- merge(e7t0_a, e7t0_b, by = "X", all = T); colnames(e7t0) <- c("X","a","b") # e7t0[is.na(e7t0)] <- 0; 
+e7t0$ab <- e7t0$a + e7t0$b; e7t0[,c("a","b","ab")] <- e7t0[,c("a","b","ab")] / colSums(e7t0[,c("a","b","ab")], na.rm = T)
+
+e8t0_a <- read.delim(file = "Data/e8t0_a.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e8t0_b <- read.delim(file = "Data/e8t0_b.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e8t0 <- merge(e8t0_a, e8t0_b, by = "X", all = T); colnames(e8t0) <- c("X","a","b") # e8t0[is.na(e8t0)] <- 0; 
+e8t0$ab <- e8t0$a + e8t0$b; e8t0[,c("a","b","ab")] <- e8t0[,c("a","b","ab")] / colSums(e8t0[,c("a","b","ab")], na.rm = T)
+
+Unfiltered_recombined_barcode_densityplot <- ggplot() + scale_x_log10() +
+  xlab("Barcode frequency") + ylab("Density (a.u.)") +
+  geom_vline(xintercept = 1e-5, linetype = 2) +
+  geom_density(data = e1t0, aes(x = ab)) +
+  geom_density(data = e2t0, aes(x = ab), color = "purple") +
+  geom_density(data = e3t0, aes(x = ab), color = "blue") +
+  geom_density(data = e4t0, aes(x = ab), color = "cyan") +
+  geom_density(data = e5t0, aes(x = ab), color = "green") + 
+  geom_density(data = e6t0, aes(x = ab), color = "yellow") +
+  geom_density(data = e7t0, aes(x = ab), color = "orange") +
+  geom_density(data = e8t0, aes(x = ab), color = "red")
+
+ggsave(file = "Plots/Supplementary_Fig_1_Unfiltered_recombined_barcode_densityplot.pdf", Unfiltered_recombined_barcode_densityplot, height = 1, width = 3)
+Unfiltered_recombined_barcode_densityplot
+
+frequency_filter_value <- 1e-5
+e1t0 <- subset(e1t0, a > frequency_filter_value & b > frequency_filter_value)
+e2t0 <- subset(e2t0, a > frequency_filter_value & b > frequency_filter_value)
+e3t0 <- subset(e3t0, a > frequency_filter_value & b > frequency_filter_value)
+e4t0 <- subset(e4t0, a > frequency_filter_value & b > frequency_filter_value)
+e5t0 <- subset(e5t0, a > frequency_filter_value & b > frequency_filter_value)
+e6t0 <- subset(e6t0, a > frequency_filter_value & b > frequency_filter_value)
+e7t0 <- subset(e7t0, a > frequency_filter_value & b > frequency_filter_value)
+e8t0 <- subset(e8t0, a > frequency_filter_value & b > frequency_filter_value)
+
+# Techrep correlations for each initial timepoint
+diversity_correlation_frame <- data.frame("diversity" = c(nrow(e1t0),nrow(e2t0),nrow(e3t0),nrow(e4t0),nrow(e5t0),nrow(e6t0),nrow(e7t0),nrow(e8t0)),
+                                          "correlation" = c(round(cor(e1t0$a, e1t0$b, use="complete.obs"),2), round(cor(e2t0$a, e2t0$b, use="complete.obs"),2), round(cor(e3t0$a, e3t0$b, use="complete.obs"),2), round(cor(e4t0$a, e4t0$b, use="complete.obs"),2), round(cor(e5t0$a, e5t0$b, use="complete.obs"),2), round(cor(e6t0$a, e6t0$b, use="complete.obs"),2), round(cor(e7t0$a, e7t0$b, use="complete.obs"),2), round(cor(e8t0$a, e8t0$b, use="complete.obs"),2)))
+
+ggplot() + geom_point(data = diversity_correlation_frame, aes(x = diversity, y = correlation)) + 
+  geom_text(data = diversity_correlation_frame, aes(x = diversity, y = correlation + 0.02, label = rownames(diversity_correlation_frame)), color = "red")
+```
+
+#### Combine all the Time-zero data
+```{r Combine all the Time-zero data, warning=F, fig.height = 1, fig.width = 3, warning = F}
+time_zero <- merge(e1t0[,c("X","ab")], e2t0[,c("X","ab")], by = "X", all = T)
+time_zero <- merge(time_zero, e3t0[,c("X","ab")], by = "X", all = T)
+time_zero <- merge(time_zero, e4t0[,c("X","ab")], by = "X", all = T)
+time_zero <- merge(time_zero, e5t0[,c("X","ab")], by = "X", all = T)
+time_zero <- merge(time_zero, e6t0[,c("X","ab")], by = "X", all = T)
+time_zero <- merge(time_zero, e7t0[,c("X","ab")], by = "X", all = T)
+time_zero <- merge(time_zero, e8t0[,c("X","ab")], by = "X", all = T)
+colnames(time_zero) <- c("X","e1","e2","e3","e4","e5","e6","e7","e8")
+
+time_zero[is.na(time_zero)] <- 0
+time_zero$ave <- rowMeans(time_zero[,c("e1","e2","e3","e4","e5","e6","e7","e8")], na.rm = T)
+
+time_zero_melt <- melt(time_zero[,!(colnames(time_zero) %in% c("ave","X"))], by = "X")
+
+recombined_diversity_summary <- data.frame("replicate" = c("e1","e2","e3","e4","e5","e6","e7","e8"), "diversity" = colSums(time_zero > 0)[c("e1","e2","e3","e4","e5","e6","e7","e8")])
+
+paste("Recombined library stats, median:", median(recombined_diversity_summary$diversity), "and max:", max(recombined_diversity_summary$diversity))
+
+barcode_diversity_plot <- ggplot() + ylab("Number of barcode pairs passing frequency filter") + xlab(NULL) +
+  geom_boxplot(data = recombined_diversity_summary, aes(x = "", y = diversity), alpha = 0) +
+  geom_jitter(data = recombined_diversity_summary, aes(x = "", y = diversity), alpha = 0.5, color = "red") +
+  coord_flip()
+ggsave(file = "Plots/Supplementary_Fig_1_barcode_diversity_plot.pdf", barcode_diversity_plot, height = 0.8, width = 3)
+barcode_diversity_plot
+```
+
+```{r Look at e1t0 barcodes, warning=F}
+e1t0_a <- read.delim(file = "Data/e1t0_a.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e1t0_b <- read.delim(file = "Data/e1t0_b.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e1t4_a <- read.delim(file = "Data/e1t4_a.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e1t4_b <- read.delim(file = "Data/e1t4_b.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e1t9_a <- read.delim(file = "Data/e1t9_a.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e1t9_b <- read.delim(file = "Data/e1t9_b.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e1t18_a <- read.delim(file = "Data/e1t18_a.tsv", sep = "\t", header = T, stringsAsFactors = F)
+e1t18_b <- read.delim(file = "Data/e1t18_b.tsv", sep = "\t", header = T, stringsAsFactors = F)
+
+e1 <- merge(e1t0_a, e1t0_b, all = T, by = "X")
+e1 <- merge(e1, e1t4_a, all = T, by = "X")
+e1 <- merge(e1, e1t4_b, all = T, by = "X")
+e1 <- merge(e1, e1t9_a, all = T, by = "X")
+e1 <- merge(e1, e1t9_b, all = T, by = "X")
+e1 <- merge(e1, e1t18_a, all = T, by = "X")
+e1 <- merge(e1, e1t18_b, all = T, by = "X")
+
+colnames(e1) <- c("X","a0","b0","a4","b4","a9","b9","a18","b18")
+e1[is.na(e1)] <- 0
+e1[,c("a0","b0","a4","b4","a9","b9","a18","b18")] <- e1[,c("a0","b0","a4","b4","a9","b9","a18","b18")] / colSums(e1[,c("a0","b0","a4","b4","a9","b9","a18","b18")])
+e1$freq_mean <- rowSums(e1[,c("a0","b0","a4","b4","a9","b9","a18","b18")])/8
+
+e1_subset <- subset(e1, a0 > 10^(-5) & b0 > 10^(-5))
+experiment_merge_subset <- e1_subset
+experiment_merge_subset$index <- experiment_merge_subset$X
+
+experiment_merge_subset$index1 <- substr(experiment_merge_subset$index,5,12)
+experiment_merge_subset$index2 <- substr(experiment_merge_subset$index,41,48)
+experiment_merge_subset$overlap <- substr(experiment_merge_subset$index,17,36)
+experiment_merge_subset$bc1a <- substr(experiment_merge_subset$index,1,4)
+experiment_merge_subset$bc1b <- substr(experiment_merge_subset$index,13,16)
+experiment_merge_subset$bc2a <- substr(experiment_merge_subset$index,37,40)
+experiment_merge_subset$bc2b <- substr(experiment_merge_subset$index,49,52)
+experiment_merge_subset$bc <- paste(experiment_merge_subset$bc1a,experiment_merge_subset$bc1b,experiment_merge_subset$bc2a,experiment_merge_subset$bc2b,sep="")
+
+experiment_merge_subset$orf1 <- NA
+experiment_merge_subset$orf2 <- NA
+
+for(x in 1:nrow(experiment_merge_subset)){
+  if(experiment_merge_subset$index2[x] %in% index$index){experiment_merge_subset$orf1[x] <- index[experiment_merge_subset$index2[x] == index$index,"name"]}
+  if(experiment_merge_subset$index1[x] %in% index$index){experiment_merge_subset$orf2[x] <- index[experiment_merge_subset$index1[x] == index$index,"name"]}
+}
+
+experiment_merge_subset$index_combined <- paste(experiment_merge_subset$index1,experiment_merge_subset$index2,sep="")
+
+experiment_merge_subset <- subset(experiment_merge_subset, !is.na(orf1) & !is.na(orf2))
+
+experiment_merge_subset_combined <- experiment_merge_subset %>% group_by(orf1, orf2) %>% 
+  summarize(a0 = sum(a0),b0 = sum(b0),a4 = sum(a4),b4 = sum(b4),a9 = sum(a9),b9 = sum(b9),a18 = sum(a18),b18 = sum(b18))
+
+library(gridExtra)
+p1 <- ggplot() + scale_x_log10(limits = c(1e-5,1e-1)) + scale_y_log10(limits = c(1e-5,1e-1)) + xlab(NULL) + ylab(NULL) + 
+  geom_point(data = experiment_merge_subset_combined, aes(x = a0/sum(experiment_merge_subset_combined$a0), 
+                                                          y = b0/sum(experiment_merge_subset_combined$b0)), alpha = 0.1) +
+  annotate("text", x = 1e-5, y = 1e-1, label = paste("Pearson's r:",round(cor(experiment_merge_subset_combined$a0, experiment_merge_subset_combined$b0),2)), hjust = 0) +
+    annotate("text", x = 1e-1, y = 1e-5*2, label = "Day 0", hjust = 1) + theme(plot.margin = unit(c(0.2,0.2,0.2,0.2), "cm"))
+
+p2 <- ggplot() + scale_x_log10(limits = c(1e-5,1e-1)) + scale_y_log10(limits = c(1e-5,1e-1)) + xlab(NULL) + ylab(NULL) +
+  geom_point(data = experiment_merge_subset_combined, aes(x = a4/sum(experiment_merge_subset_combined$a4), 
+                                                          y = b4/sum(experiment_merge_subset_combined$b4)), alpha = 0.1) +
+    annotate("text", x = 1e-5, y = 1e-1, label = paste("Pearson's r:",round(cor(experiment_merge_subset_combined$a4, experiment_merge_subset_combined$b4),2)), hjust = 0) +
+      annotate("text", x = 1e-1, y = 1e-5*2, label = "Day 4", hjust = 1) + theme(plot.margin = unit(c(0.2,0.2,0.2,0.2), "cm"))
+
+p3 <- ggplot() + scale_x_log10(limits = c(1e-5,1e-1)) + scale_y_log10(limits = c(1e-5,1e-1)) + xlab(NULL) + ylab(NULL) +
+  geom_point(data = experiment_merge_subset_combined, aes(x = a9/sum(experiment_merge_subset_combined$a9), 
+                                                          y = b9/sum(experiment_merge_subset_combined$b9)), alpha = 0.1) +
+    annotate("text", x = 1e-5, y = 1e-1, label = paste("Pearson's r:",round(cor(experiment_merge_subset_combined$a9, experiment_merge_subset_combined$b9),2)), hjust = 0) +
+  annotate("text", x = 1e-1, y = 1e-5*2, label = "Day 9", hjust = 1) + theme(plot.margin = unit(c(0.2,0.2,0.2,0.2), "cm"))
+
+p4 <- ggplot() + scale_x_log10(limits = c(1e-5,1e-1)) + scale_y_log10(limits = c(1e-5,1e-1)) + xlab(NULL) + ylab(NULL) +
+  geom_point(data = experiment_merge_subset_combined, aes(x = a18/sum(experiment_merge_subset_combined$a18), 
+                                                          y = b18/sum(experiment_merge_subset_combined$b18)), alpha = 0.1) +
+    annotate("text", x = 1e-5, y = 1e-1, label = paste("Pearson's r:",round(cor(experiment_merge_subset_combined$a18, experiment_merge_subset_combined$b18),2)), hjust = 0) + 
+  annotate("text", x = 1e-1, y = 1e-5*2, label = "Day 18", hjust = 1) + theme(plot.margin = unit(c(0.2,0.2,0.2,0.2), "cm"))
+
+combined_techreps_plot <- grid.arrange(p1, p2, p3, p4, nrow = 2)
+ggsave(file = "Plots/Supplementary_Fig_1_combined_techreps_plot.pdf", combined_techreps_plot, height = 2.5, width = 4)
+```
+
+```{r More Time Zero Stuff, warning=F}
+time_zero <- time_zero[order(time_zero$ave, decreasing = T),]
+
+colSums((time_zero[,2:9] != 0))
+paste("The median number of barcodes observed in the replicates:",median(colSums((time_zero[,2:9] != 0))))
+paste("The minimum number of barcodes observed in the replicates:",min(colSums((time_zero[,2:9] != 0))))
+paste("The maximum number of barcodes observed in the replicates:",max(colSums((time_zero[,2:9] != 0))))
+
+time_zero$index <- time_zero$X
+time_zero$index1 <- substr(time_zero$index,5,12)
+time_zero$index2 <- substr(time_zero$index,41,48)
+time_zero$overlap <- substr(time_zero$index,17,36)
+time_zero$bc1a <- substr(time_zero$index,1,4)
+time_zero$bc1b <- substr(time_zero$index,13,16)
+time_zero$bc2a <- substr(time_zero$index,37,40)
+time_zero$bc2b <- substr(time_zero$index,49,52)
+time_zero$bc <- paste(time_zero$bc1a,time_zero$bc1b,time_zero$bc2a,time_zero$bc2b,sep="")
+
+time_zero$orf1 <- NA; time_zero$orf2 <- NA
+for(x in 1:nrow(time_zero)){
+  if(time_zero$index2[x] %in% index$index){time_zero$orf1[x] <- index[time_zero$index2[x] == index$index,"name"]}
+  if(time_zero$index1[x] %in% index$index){time_zero$orf2[x] <- index[time_zero$index1[x] == index$index,"name"]}
+}
+
+time_zero$index_combined <- paste(time_zero$index1,time_zero$index2,sep="")
+time_zero <- subset(time_zero, !is.na(orf1) & !is.na(orf2))
+time_zero$recombined_bc <- 1
+time_zero_combined <- time_zero %>% group_by(orf1, orf2) %>% 
+  summarize(e1 = sum(e1), e2 = sum(e2), e3 = sum(e3), e4 = sum(e4), e5 = sum(e5), e6 = sum(e6), recombined_freq = sum(ave), recombined_bc = sum(recombined_bc))
+time_zero_combined <- time_zero_combined[order(time_zero_combined$recombined_freq, decreasing = T),]
+
+experiment_merge_subset$recombined_freq <- ((experiment_merge_subset$a0 / sum(experiment_merge_subset$a0, na.rm = T)) + 
+                                              (experiment_merge_subset$b0 / sum(experiment_merge_subset$b0, na.rm = T)))/2
+
+experiment_merge_subset$recombined_bc <- 1
+experiment_merge_subset_barcoded <- experiment_merge_subset %>% group_by(orf1, orf2) %>% summarize(recombined_bc = sum(recombined_bc), recombined_freq = sum(recombined_freq))
+
+experiment_merge_subset_barcoded <- merge(experiment_merge_subset_barcoded, plasmid_barcoded, by = c("orf1","orf2"), all = T)
+
+combinations_plasmid_recombined <- experiment_merge_subset_barcoded[,c("orf1","orf2","recombined_bc","recombined_freq","bc_number","freq1","freq2","freq")]
+colnames(combinations_plasmid_recombined) <- c("orf1","orf2","recombined_bc","recombined_freq","plasmid_bc","plasmid_freq1","plasmid_freq2","plasmid_freq")
+
+time_zero_subset_combined_plasmid <- merge(time_zero_combined, experiment_merge_subset_barcoded[,c("orf1","orf2","bc_number","freq1","freq2","freq")], by = c("orf1","orf2"), all = T)
+time_zero_subset_combined_plasmid <- time_zero_subset_combined_plasmid[,c("orf1","orf2","freq1","freq2","freq","bc_number","recombined_freq","recombined_bc")]
+colnames(time_zero_subset_combined_plasmid) <- c("orf1","orf2","freq_plasmid1","freq_plasmid2","freq_plasmid","bc_plasmid","freq_rec","bc_rec")
+
+time_zero_subset_combined_plasmid$freq_plasmid1 <- 
+  time_zero_subset_combined_plasmid$freq_plasmid1 / sum(time_zero_subset_combined_plasmid$freq_plasmid1, na.rm = T)
+
+time_zero_subset_combined_plasmid$freq_plasmid2 <- 
+  time_zero_subset_combined_plasmid$freq_plasmid2 / sum(time_zero_subset_combined_plasmid$freq_plasmid2, na.rm = T)
+
+time_zero_subset_combined_plasmid$bc_plasmid <- 
+  time_zero_subset_combined_plasmid$bc_plasmid / sum(time_zero_subset_combined_plasmid$bc_plasmid, na.rm = T)
+
+time_zero_subset_combined_plasmid$freq_rec <- 
+  time_zero_subset_combined_plasmid$freq_rec / sum(time_zero_subset_combined_plasmid$freq_rec, na.rm = T)
+
+time_zero_subset_combined_plasmid$bc_rec <- 
+  time_zero_subset_combined_plasmid$bc_rec / sum(time_zero_subset_combined_plasmid$bc_rec, na.rm = T)
+
+time_zero_subset_combined_plasmid$bc_ratio <- time_zero_subset_combined_plasmid$bc_rec / time_zero_subset_combined_plasmid$bc_plasmid
+time_zero_subset_combined_plasmid$freq_ratio1 <- time_zero_subset_combined_plasmid$freq_rec / time_zero_subset_combined_plasmid$freq_plasmid1
+time_zero_subset_combined_plasmid$freq_ratio2 <- time_zero_subset_combined_plasmid$freq_rec / time_zero_subset_combined_plasmid$freq_plasmid2
+
+time_zero_subset_combined_plasmid$bc_ratio_log10 <- log10(time_zero_subset_combined_plasmid$bc_ratio)
+time_zero_subset_combined_plasmid$freq_ratio1_log10 <- log10(time_zero_subset_combined_plasmid$freq_ratio1)
+time_zero_subset_combined_plasmid$freq_ratio2_log10 <- log10(time_zero_subset_combined_plasmid$freq_ratio2)
+
+orf1_ratio_plot <- ggplot(data = time_zero_subset_combined_plasmid)  + 
+  scale_x_continuous(limits = c(-2.1,3)) + scale_y_continuous(limits = c(0,11), expand = c(0,0)) +
+  facet_grid(rows = vars(orf1)) + theme(strip.text.y = element_text(angle = 0), axis.text.y = element_blank()) + xlab("Recombined:plasmid ratio") +
+  geom_histogram(aes(x = freq_ratio1_log10), bins = 50, fill = "cyan", alpha = 0.5, binwidth = 0.5) +
+  geom_histogram(aes(x = freq_ratio2_log10), bins = 50, fill = "orange", alpha = 0.5, binwidth = 0.5)
+orf1_ratio_plot
+ggsave(file = "Plots/Supplementary_Fig_5a_orf1_ratio_plot.pdf", orf1_ratio_plot, height = 5, width = 2.4)
+
+orf2_ratio_plot <- ggplot(data = subset(time_zero_subset_combined_plasmid, !(orf1 %in% c("TP53","TP53-R273H","RB1"))))  + 
+  scale_x_continuous(limits = c(-2.1,3)) + scale_y_continuous(limits = c(0,11), expand = c(0,0)) +
+  facet_grid(rows = vars(orf2)) + theme(strip.text.y = element_text(angle = 0), axis.text.y = element_blank()) + xlab("Recombined:plasmid ratio") +
+  geom_histogram(aes(x = freq_ratio1_log10), bins = 50, fill = "cyan", alpha = 0.5, binwidth = 0.5) +
+  geom_histogram(aes(x = freq_ratio2_log10), bins = 50, fill = "orange", alpha = 0.5, binwidth = 0.5)
+orf2_ratio_plot
+ggsave(file = "Plots/Supplementary_Fig_5a_orf2_ratio_plot.pdf", orf2_ratio_plot, height = 5, width = 2.4)
+
+Recombined_plasmid_bc_ratio_plot <- ggplot() + 
+  xlab(NULL) + ylab("Log10 recombined:plasmid PIDs") + 
+  theme(axis.text.x = element_text(angle = -90, hjust = 0, vjust = 0.5), panel.grid.major.x = element_blank()) +
+  geom_jitter(data = time_zero_subset_combined_plasmid, aes(x = orf1, y = bc_ratio_log10), alpha = 0.4, size = 1, color = "blue") +
+  geom_boxplot(data = time_zero_subset_combined_plasmid, aes(x = orf1, y = bc_ratio_log10), shape = 1, alpha = 0, size = 0.5, outlier.size = 0)
+Recombined_plasmid_bc_ratio_plot
+ggsave(file = "Plots/Fig_5a_Recombined_plasmid_bc_ratio_plot.pdf", Recombined_plasmid_bc_ratio_plot, height = 1.6, width = 3.4)
+```
+
+#### Import scores determined by Enrich to quantitate growth effects
+```{r Fig 5, warning = F}
+import_enrich_slope <- function(x){
+  scores <- read.delim(file = paste("Data/",x,".tsv",sep=""), sep = "\t", header = T, stringsAsFactors = F)
+  scores$index2 <- substr(scores$X, 1, 8)
+  scores$index1 <- substr(scores$X, 9, 16)
+  scores <- subset(scores, index1 %in% index$index & index2 %in% index$index)
+  scores$orf1 <- 0
+  scores$orf2 <- 0
+  for(x in 1:nrow(scores)){
+    scores$orf1[x] <- index$name[scores$index1[x] == index$index]
+    scores$orf2[x] <- index$name[scores$index2[x] == index$index]
+  }
+  return(scores)
+}
+
+# Run the import function for all of the datasets
+e1 <- import_enrich_slope("E1"); e2 <- import_enrich_slope("E2"); e3 <- import_enrich_slope("E3"); e4 <- import_enrich_slope("E4"); e5 <- import_enrich_slope("E5"); e6 <- import_enrich_slope("E6"); e7 <- import_enrich_slope("E7"); e8 <- import_enrich_slope("E8")
+
+# Make a large datatable of the results
+combined_scores <- merge(e1[,c("orf1","orf2","score","SE")], e2[,c("orf1","orf2","score","SE")], by = c("orf1","orf2"), all = T)
+combined_scores <- merge(combined_scores, e3[,c("orf1","orf2","score","SE")], by = c("orf1","orf2"), all = T)
+combined_scores <- merge(combined_scores, e4[,c("orf1","orf2","score","SE")], by = c("orf1","orf2"), all = T)
+combined_scores <- merge(combined_scores, e5[,c("orf1","orf2","score","SE")], by = c("orf1","orf2"), all = T)
+combined_scores <- merge(combined_scores, e6[,c("orf1","orf2","score","SE")], by = c("orf1","orf2"), all = T)
+combined_scores <- merge(combined_scores, e7[,c("orf1","orf2","score","SE")], by = c("orf1","orf2"), all = T)
+combined_scores <- merge(combined_scores, e8[,c("orf1","orf2","score","SE")], by = c("orf1","orf2"), all = T)
+colnames(combined_scores) <- c("orf1","orf2","e1s","e1e","e2s","e2e","e3s","e3e","e4s","e4e","e5s","e5e","e6s","e6e","e7s","e7e","e8s","e8e")
+combined_scores$score <- rowMeans(combined_scores[,c("e1s","e2s","e3s","e4s","e5s","e6s","e7s","e8s")], na.rm = T)
+combined_scores$expts <- rowSums(!is.na(combined_scores[,c("e1s","e2s","e3s","e4s","e5s","e6s","e7s","e8s")]), na.rm = T)
+```
+
+#### The below line generates the supplementary datafile included with the manuscript
+```{r Export tables for supplementary datafiles}
+write.csv(file = "Enrichment_scores.csv", combined_scores, row.names = F, quote = F)
+```
+
+#### Replicate correlations. Left out of the manuscript due to a lack of space.
+```{r Look at slope pairwise comparisons, warning = F}
+
+combined_scores <- read.csv(file = "Enrichment_scores.csv", header = T, stringsAsFactors = F)
+
+combined_scores_min <- combined_scores[,c("e1s","e2s","e3s","e4s","e5s","e6s","e7s","e8s")]
+
+pearson_cor_matrix <- as.matrix(cor(combined_scores_min[,c("e1s","e2s","e3s","e4s","e5s","e6s","e7s","e8s")], use="pairwise.complete.obs", method = "pearson"))
+spearman_cor_matrix <- as.matrix(cor(combined_scores_min[,c("e1s","e2s","e3s","e4s","e5s","e6s","e7s","e8s")], use="pairwise.complete.obs", method = "spearman"))
+
+plotting_min <- -4
+plotting_max <- 4
+
+pairwise_names <- c("e1s","e2s","e3s","e4s","e5s","e6s","e7s","e8s")
+
+for(x in 1:(length(pairwise_names)-1)){
+  for(y in (x+1):length(pairwise_names)){
+    #print(paste(x,y))
+    plot <- ggplot() + xlab(NULL) + ylab(NULL) + scale_x_continuous(limits = c(plotting_min, plotting_max)) + scale_y_continuous(limits = c(plotting_min, plotting_max)) +
+      geom_point(data = combined_scores_min, aes(x = get(colnames(combined_scores_min)[x]), y = get(colnames(combined_scores_min)[y])), alpha = 0.5, color = "red") + 
+      annotate("text",x = 0, y = 4, label = paste(colnames(combined_scores_min)[x],"by",colnames(combined_scores_min)[y])) + 
+      annotate("text",x = 0, y = 3.5, label = paste("Pearson's r:",round(cor(combined_scores_min[,colnames(combined_scores_min)[x]], combined_scores_min[,colnames(combined_scores_min)[y]], use="pairwise.complete.obs", method = "pearson"),2))) +
+      annotate("text",x = 0, y = 3, label = paste("Spearman's rho:",round(cor(combined_scores_min[,colnames(combined_scores_min)[x]], combined_scores_min[,colnames(combined_scores_min)[y]], use="pairwise.complete.obs", method = "spearman"),2))) +
+      annotate("text",x = 0, y = 2.5, label = paste("n:",nrow(subset(combined_scores_min, !is.na(combined_scores_min[,colnames(combined_scores_min)[x]]) & !is.na(combined_scores_min[,colnames(combined_scores_min)[y]])))))
+      print(plot)
+      ggsave(file = paste("Plots/Supplementary_Fig_",colnames(combined_scores_min)[x],"_",colnames(combined_scores_min)[y],".pdf", sep = ""), plot, height = 3, width = 3)
+  }
+}
+
+paste("Mean replicate correlation, Pearson's r:",round(mean(pearson_cor_matrix),2))
+paste("Mean replicate correlation, Spearman's rho:",round(mean(spearman_cor_matrix),2))
+```
+
+```{r Plotting the heatmap, warning = F}
+## For combinations observed in 4+ replicates, give them complete tiles. For combinations observed in 1 to 3 replicates, smaller tiles. Grey for those not scored at all.
+
+paste("The total number of combinations observed was:",sum(table(combined_scores$expts)))
+
+replicate_summary_frame <- data.frame(table(combined_scores$expts))
+colnames(replicate_summary_frame) <- c("replicates","count")
+replicate_summary_frame$replicates <- as.numeric(replicate_summary_frame$replicates)
+
+paste("The total number of combinations observed in four or more replicates was:",sum((subset(replicate_summary_frame, replicates >= 4))$count))
+paste("The total number of combinations observed in one through three replicates was:",sum((subset(replicate_summary_frame, replicates <= 3))$count))
+
+combined_scores$size_for_heatmap <- 0.4
+for(x in 1:nrow(combined_scores)){if(combined_scores$expts[x] >= 4){combined_scores$size_for_heatmap[x] <- 1}}
+
+Ind_combined_heatmap <- ggplot() + theme(panel.background = element_rect("grey50"), panel.grid.major = element_blank(), axis.text.x = element_text(angle = -90, hjust = 0, vjust = 0.5)) + 
+  labs(fill="Cell growth") + xlab("Gene N-terminal of 2A") + ylab("Gene C-terminal of 2A") +
+  geom_tile(data= combined_scores, aes(x = orf1, y = orf2, fill = score, height = size_for_heatmap, width = size_for_heatmap), color = "black") + scale_fill_gradient2(low = "blue", mid = "white", high = "red")
+Ind_combined_heatmap
+ggsave(file = "Plots/Fig_5b_Ind_combined_score_heatmap.pdf", Ind_combined_heatmap, height = 3.2*0.95, width = 4.5*0.95)
+```
+
+```{r Prepare a data frame for resampling tests, warning = F}
+slope_paired <- combined_scores
+slope_paired$orf1 <- as.character(slope_paired$orf1)
+slope_paired$orf2 <- as.character(slope_paired$orf2)
+
+## Only use scores that have been calcualted based on four or more replicates
+slope_paired_4_or_more <- subset(slope_paired, expts >= 4)[,c("orf1","orf2","score")]
+
+# Only look at combinations where the gene had been observed more than 10 times in that position
+slope_paired_4_or_more$count <- 1
+slope_paired_4_or_more_pos1 <- slope_paired_4_or_more %>% group_by(orf1) %>% summarize("coverage" = sum(count)) %>% filter(coverage >= 10)
+slope_paired_4_or_more_pos2 <- slope_paired_4_or_more %>% group_by(orf2) %>% summarize("coverage" = sum(count)) %>% filter(coverage >= 10)
+```
+
+#### A statistical test to see which genes had scores that clearly differed from zero
+```{r One sample test to see how many genes had scores different from zero, warning = F}
+## Difference from zero resampling test
+nonzero_score_resampling_n_value <- 400
+nonzero_score_resampling_p_values <- data.frame("orf" = NA,"n_fusion_p_value" = NA, "c_fusion_p_value" = NA)
+
+nonzero_score_resampling_frame <- rbind(data.frame("orf" = slope_paired_4_or_more_pos1$orf1, "position" = 1), 
+                                        data.frame("orf" = slope_paired_4_or_more_pos2$orf2, "position" = 2))
+
+nonzero_score_resampling_frame$fraction_lower <- NA
+nonzero_score_resampling_frame$fraction_higher <- NA
+
+for(x in 1:nrow(nonzero_score_resampling_frame)){
+  test_orf <- as.character(nonzero_score_resampling_frame[x,"orf"])
+  position <- nonzero_score_resampling_frame[x,"position"]
+  if(position == 1){test_subset <- subset(slope_paired_4_or_more, orf1 == test_orf)}
+  if(position == 2){test_subset <- subset(slope_paired_4_or_more, orf2 == test_orf)}
+  
+  test_result_vector <- sample(test_subset$score, nonzero_score_resampling_n_value, replace = T)
+  test_smaller_value <- sum(test_result_vector < 0) / nonzero_score_resampling_n_value
+  test_larger_value <- sum(test_result_vector > 0) / nonzero_score_resampling_n_value
+  
+  nonzero_score_resampling_frame$fraction_lower[x] <- test_smaller_value
+  nonzero_score_resampling_frame$fraction_higher[x] <- test_larger_value
+}
+
+```
+
+#### Trying multiple-hypothesis testing correction
+```{r Slope medians, warning = F}
+### Make a dummy table of all pairwise combos
+
+orf1 <-  slope_paired_4_or_more_pos1
+orf2 <-  slope_paired_4_or_more_pos2
+possible_plasmids <- data.frame("orf1" = rep("ORF1", nrow(orf1)*nrow(orf2)), "orf2" = rep("ORF2", nrow(orf1)*nrow(orf2)))
+
+possible_plasmids$orf1 <- as.character(possible_plasmids$orf1)
+possible_plasmids$orf2 <- as.character(possible_plasmids$orf2)
+
+counter <- 1
+for(x in 1:nrow(orf1)){
+  for(y in 1:nrow(orf2)){
+    possible_plasmids$orf1[counter] <- orf1$orf1[x]
+    possible_plasmids$orf2[counter] <- orf2$orf2[y]
+    counter <- counter + 1
+  }
+}
+
+expt1_resampling_n_value <- 100
+query_orfs <- as.character(unique(possible_plasmids$orf2))
+
+expt1_resampling_p_values <- data.frame("orf" = NA,"n_fusion_p_value" = NA, "c_fusion_p_value" = NA)
+for(x in 1:length(query_orfs)){
+  test_orf <- query_orfs[x]
+  test_set1 <- subset(slope_paired, test_orf == orf1)
+  test_set2 <- subset(slope_paired, test_orf == orf2)
+  test_set1_min <- test_set1[,c("orf2","score")]; colnames(test_set1_min) <- c("orf","query_n")
+  test_set2_min <- test_set2[,c("orf1","score")]; colnames(test_set2_min) <- c("orf","query_c")
+  test <- merge(test_set1_min, test_set2_min, by = "orf")
+  test_complete <- subset(test, !is.na(query_n) & !is.na(query_c))
+  
+  expt1_resampling_results <- c()
+  for(y in 1:expt1_resampling_n_value){
+    expt1_resampling_temp_table <- data.frame("query_n" = NA, "query_c" = NA)
+    for(z in 1:nrow(test_complete)){
+      expt1_resampling_temp_table <- rbind(expt1_resampling_temp_table, sample(as.numeric(test_complete[z,c(2,3)]), size = 2, replace = FALSE))
+    }
+    expt1_resampling_temp_table <- subset(expt1_resampling_temp_table, !is.na(query_n))
+    expt1_resampling_results <- c(expt1_resampling_results,sum(expt1_resampling_temp_table$query_n > expt1_resampling_temp_table$query_c) / nrow(expt1_resampling_temp_table))
+  }
+  temp_p_value <- sum(sum(test_complete$query_n > test_complete$query_c) / nrow(test_complete) < expt1_resampling_results) / length(expt1_resampling_results)
+  temp_p_value_c <- 1 - temp_p_value
+  expt1_resampling_p_values <- rbind(expt1_resampling_p_values, data.frame("orf" = test_orf,"n_fusion_p_value" = temp_p_value, "c_fusion_p_value" = temp_p_value_c))
+}
+expt1_resampling_p_values <- subset(expt1_resampling_p_values, !is.na(orf))
+
+benjaminihochberg_vector <- c(expt1_resampling_p_values$n_fusion_p_value, expt1_resampling_p_values$c_fusion_p_value)
+benjaminihochberg_vector <- benjaminihochberg_vector[order(benjaminihochberg_vector, decreasing = T)]
+
+benjaminihochberg_frame <- data.frame("rank" = seq(length(benjaminihochberg_vector),1), "original_p" = benjaminihochberg_vector)
+benjaminihochberg_frame$adjusted_p <- NA
+
+benjaminihochberg_frame$adjusted_p[1] <- benjaminihochberg_frame$original_p[1]
+
+for(x in 2:nrow(benjaminihochberg_frame)){
+  calculated_adjusted_p <- benjaminihochberg_frame$original_p[x] * (nrow(benjaminihochberg_frame) / benjaminihochberg_frame$rank[x])
+  if(benjaminihochberg_frame$original_p[x-1] <= calculated_adjusted_p){benjaminihochberg_frame$adjusted_p[x] <- benjaminihochberg_frame$original_p[x-1]}
+  if(calculated_adjusted_p <= benjaminihochberg_frame$original_p[x-1]){benjaminihochberg_frame$adjusted_p[x] <- calculated_adjusted_p}
+}
+
+resampling_p_values_summary <- melt(expt1_resampling_p_values, id = "orf")
+colnames(resampling_p_values_summary) <- c("orf","orientation","original_p")
+
+resampling_p_values_summary <- merge(resampling_p_values_summary, benjaminihochberg_frame[,c("original_p","adjusted_p")], by = "original_p")
+
+slope_paired_complete_nona <- slope_paired
+slope_paired_complete_nona$count <- 1
+```
+
+#### Histograms of individual scores, showing how closely these scores replicated
+```{r individual scores, fig.width=3, fig.height=6, warning = F}
+tp53_tp53 <- combined_scores %>% filter(orf1 == "TP53" & orf2 == "TP53")
+tp53_tp53_slopes <- data.frame("replicate" = seq(1,8),"slope" = t(tp53_tp53[,c("e1s","e2s","e3s","e4s","e5s","e6s","e7s","e8s")]))
+
+stk11_tp53 <- combined_scores %>% filter(orf1 == "STK11" & orf2 == "TP53")
+stk11_tp53_slopes <- data.frame("replicate" = seq(1,8),"slope" = t(stk11_tp53[,c("e1s","e2s","e3s","e4s","e5s","e6s","e7s","e8s")]))
+
+tp53_stk11 <- combined_scores %>% filter(orf1 == "TP53" & orf2 == "STK11")
+tp53_stk11_slopes <- data.frame("replicate" = seq(1,8),"slope" = t(tp53_stk11[,c("e1s","e2s","e3s","e4s","e5s","e6s","e7s","e8s")]))
+
+hygro_rb1 <- combined_scores %>% filter(orf1 == "HygroR" & orf2 == "RB1")
+hygro_rb1_slopes <- data.frame("replicate" = seq(1,8),"slope" = t(hygro_rb1[,c("e1s","e2s","e3s","e4s","e5s","e6s","e7s","e8s")]))
+
+egfp_rb1 <- combined_scores %>% filter(orf1 == "EGFP" & orf2 == "RB1")
+egfp_rb1_slopes <- data.frame("replicate" = seq(1,8),"slope" = t(egfp_rb1[,c("e1s","e2s","e3s","e4s","e5s","e6s","e7s","e8s")]))
+
+vhl_tp53 <- combined_scores %>% filter(orf1 == "VHL" & orf2 == "TP53")
+vhl_tp53_slopes <- data.frame("replicate" = seq(1,8),"slope" = t(vhl_tp53[,c("e1s","e2s","e3s","e4s","e5s","e6s","e7s","e8s")]))
+
+vhl188_tp53 <- combined_scores %>% filter(orf1 == "VHL-L188Q" & orf2 == "TP53")
+vhl188_tp53_slopes <- data.frame("replicate" = seq(1,8),"slope" = t(vhl188_tp53[,c("e1s","e2s","e3s","e4s","e5s","e6s","e7s","e8s")]))
+
+r273h_akt <- combined_scores %>% filter(orf1 == "TP53-R273H" & orf2 == "AKT1-E17K")
+r273h_akt_slopes <- data.frame("replicate" = seq(1,8),"slope" = t(r273h_akt[,c("e1s","e2s","e3s","e4s","e5s","e6s","e7s","e8s")]))
+
+epistatic_summary <- data.frame("replicate" = seq(1,8), "tp53_tp53" = tp53_tp53_slopes$slope, "stk11_tp53" =  stk11_tp53_slopes$slope,"tp53_stk11" = tp53_stk11_slopes$slope, "vhl_tp53" = vhl_tp53_slopes$slope, "vhl188_tp53" = vhl188_tp53_slopes$slope, "hygro_rb1" = hygro_rb1_slopes$slope, "egfp_rb1" = egfp_rb1_slopes$slope, "r273h_akt" = r273h_akt_slopes$slope)
+
+
+epistatic_summary_melt <- melt(epistatic_summary, id = "replicate")
+
+individual_scores_plot <- ggplot() + 
+  xlab("Score") +
+  theme(strip.text.y = element_text(angle=0)) +
+  scale_y_continuous(breaks = c(0,4)) +
+  geom_hline(yintercept = 0) + geom_vline(xintercept = 0, linetype = 2) +
+  geom_histogram(data = epistatic_summary_melt, aes(x = value), binwidth = 1, fill = "grey80", color = "black") + 
+  facet_grid(rows = vars(variable))
+individual_scores_plot
+ggsave(file = "Plots/Fig_5c_Individual_scores_plot.pdf", individual_scores_plot, height = 2.3, width = 3)
+```
+
+
+#### Median scores to get a sense of overall effect of a transgene in a given position
+```{r Take median values, warning = F}
+n_medians <- slope_paired %>% group_by(orf1) %>% summarize(n_median = median(score, na.rm = TRUE))
+c_medians <- slope_paired %>% group_by(orf2) %>% summarize(c_median = median(score, na.rm = TRUE))
+
+n_medians$n_median <- round(n_medians$n_median, 3)
+c_medians$c_median <- round(c_medians$c_median, 3)
+
+minvalue <- min(n_medians$n_median, c_medians$c_median)
+maxvalue <- max(n_medians$n_median, c_medians$c_median)
+
+median_values1 <- slope_paired_complete_nona %>% group_by(orf1) %>% summarize(median = median(score, na.rm = TRUE), count = sum(count))
+colnames(median_values1) <- c("orf","n_score","n_count")
+median_values2 <- slope_paired_complete_nona %>% group_by(orf2) %>% summarize(median = median(score, na.rm = TRUE), count = sum(count))
+colnames(median_values2) <- c("orf","c_score","c_count")
+median_values <- merge(median_values1[,c("orf","n_score","n_count")], median_values2[,c("orf","c_score","c_count")], by = "orf")
+median_values$mean_slope <- (median_values$n_score + median_values$c_score)/2
+median_values <- median_values[order(median_values$mean_slope),]
+median_values$orf <- factor(median_values$orf, levels = median_values$orf)
+
+combined_scores_plotting <- subset(combined_scores, !(orf1 %in% c("VHL","VHL-L188Q")))
+combined_scores_plotting$orf1 <- factor(combined_scores_plotting$orf1, levels = median_values$orf)
+combined_scores_plotting$orf2 <- factor(combined_scores_plotting$orf2, levels = median_values$orf)
+
+Positional_effects_plot <- ggplot() + 
+  theme(axis.text.x = element_text(angle = -90, hjust = 0, vjust = 0.5), panel.grid.major.x = element_blank()) +
+  xlab(NULL) + ylab("Median score") + 
+  geom_jitter(data = combined_scores_plotting, aes(x = orf1, y = score), shape = 16, color = "dark green", alpha = 0.3, size = 0.5) +
+  geom_jitter(data = combined_scores_plotting, aes(x = orf2, y = score), shape = 16, color = "brown", alpha = 0.3, size = 0.5) +
+  geom_point(data = median_values, aes(x = orf, y = mean_slope), shape = 95, size = 6) +
+  geom_point(data = median_values, aes(x = orf, y = n_score), shape = 1, color = "dark green", size = 1.5) +
+  geom_point(data = median_values, aes(x = orf, y = c_score), shape = 1, color = "brown", size = 1.5) +
+  ggtitle("Green = Gene as ORF-1, Brown = Gene as ORF-2")
+Positional_effects_plot
+ggsave(file = "Plots/Fig_5d_Positional_effects_plot.pdf", Positional_effects_plot, height = 2.5, width = 3.4)
+```
+
+#### Comparing how these median scores compared with a transgene's effect when paired with a putatively inert partner
+```{r Validation of medians scores with HygroR pairing, fig.height = 2.5, fig.width = 3.4, warning = F}
+n_median_control <- merge(n_medians, subset(slope_paired_complete_nona, orf2 %in% c("EGFP", "HygroR-"))[,c("orf1","orf2","score")], all.x = T)
+n_median_control$type <- "ORF-1"
+n_median_control$median <- n_median_control$n_median
+c_median_control <- merge(c_medians, subset(slope_paired_complete_nona, orf1 %in% c("EGFP", "HygroR"))[,c("orf1","orf2","score")], all.x = T)
+c_median_control$type <- "ORF-2"
+c_median_control$median <- c_median_control$c_median
+medians_control <- rbind(n_median_control[c("orf1","orf2","type","median","score")], c_median_control[c("orf1","orf2","type","median","score")])
+medians_control <- subset(medians_control, !is.na(score))
+
+medians_control$label <- "none"
+for(x in 1:nrow(medians_control)){
+  if(medians_control$orf1[x] == "EGFP" & medians_control$orf2[x] != "HygroR"){medians_control$label[x] <- "EGFP"}
+  if(medians_control$orf2[x] == "EGFP" & medians_control$orf1[x] != "HygroR"){medians_control$label[x] <- "EGFP"}
+  if(medians_control$orf1[x] != "EGFP" & medians_control$orf2[x] == "HygroR"){medians_control$label[x] <- "HygroR"}
+  if(medians_control$orf2[x] != "EGFP" & medians_control$orf1[x] == "HygroR"){medians_control$label[x] <- "HygroR"}
+  if(medians_control$orf1[x] == "EGFP" & medians_control$orf2[x] == "HygroR"){medians_control$label[x] <- "Both"}
+  if(medians_control$orf2[x] == "EGFP" & medians_control$orf1[x] == "HygroR"){medians_control$label[x] <- "Both"}
+}
+
+Median_values_vs_scores_when_paired_with_controls_plot <- 
+ggplot() + scale_color_manual(values = c("black","blue","red")) + xlab("Score") + ylab("Median score") +
+  geom_point(data = medians_control, aes(x = score, y = median, color = label, shape = type), size = 2, alpha = 0.5) + 
+  annotate("text", x = min(medians_control$score), y = max(medians_control$median)*1.8, hjust = 0,
+           label = paste("Pearson's r:",round(cor(x = medians_control$score, y = medians_control$median),2)))
+Median_values_vs_scores_when_paired_with_controls_plot
+ggsave(file = "Plots/Supplementary_Fig_5b_Median_values_vs_controls_plot.pdf",Median_values_vs_scores_when_paired_with_controls_plot, height = 1.5, width = 3.4)
+```
+
+#### Generating gene interaction scores
+```{r Make real diffslope based on optimal, warning = F}
+## Make real diffslope based on optimal n's and c's
+median_values2 <- merge(n_medians[,c("orf1","n_median")], c_medians[,c("orf2","c_median")], all = TRUE)
+median_values2$singles_added <- median_values2$n_median + median_values2$c_median
+
+median_values3 <- merge(median_values2, slope_paired_complete_nona, by = c("orf1","orf2"), all = T)
+median_values3$real_minus_additive <- median_values3$score - median_values3$singles_added
+
+median_values3 <- merge(combined_scores[,c("orf1","orf2","expts")], median_values3, all.y = T)
+
+Difference_heatmap <- ggplot() + theme(panel.background = element_rect("grey50"), panel.grid.major = element_blank(), axis.text.x = element_text(angle = -90, hjust = 0, vjust = 0.5)) + labs(fill="Cell growth") + xlab("Gene N-terminal of 2A") + ylab("Gene C-terminal of 2A") +
+  geom_tile(data= median_values3, aes(x = orf1, y = orf2, fill = real_minus_additive, height = size_for_heatmap, width = size_for_heatmap), color = "black") + scale_fill_gradient2(low = "blue", mid = "white", high = "red")
+Difference_heatmap
+ggsave(file = "Plots/Fig_5e_Difference_heatmap.pdf", Difference_heatmap, height = 3.2*0.95, width = 4.5*0.95)
+```
+
+
+
